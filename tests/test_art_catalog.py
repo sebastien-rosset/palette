@@ -80,3 +80,15 @@ def test_title_with_missing_format():
     assert result["width"] == 50.0
     assert result["height"] == 65.0
     assert result["catalog_number"] == "21205-4"
+
+
+def test_title_with_missing_format():
+    # Filename with (2) at the end that was added when copying the file.
+    filename = "2305-4-Brest, le port de commerce-H-80X40 (2).JPG"
+    catalog = ArtCatalog("/dummy/path")
+    result = catalog.parse_filename(
+        "/dummy/path/" + filename, filename, default_year=2012
+    )
+    assert result["title"] == "Brest, le port de commerce"
+    assert result["width"] == 80.0
+    assert result["height"] == 40.0

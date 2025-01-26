@@ -170,6 +170,11 @@ class ArtCatalog:
         # Remove file extension
         name_without_ext = os.path.splitext(filename)[0]
 
+        # First check for trailing copy number (e.g., "(1)", "(2)")
+        copy_match = re.search(r"\(\d+\)$", name_without_ext)
+        if copy_match:
+            name_without_ext = name_without_ext[: copy_match.start()].strip("-")
+
         # First extract the reference numbers from the start
         parts = name_without_ext.split("-")
 
@@ -186,35 +191,16 @@ class ArtCatalog:
         if ref_parts:
             info["catalog_number"] = "-".join(ref_parts)
             # Get the rest of the string, preserving the first character of the title
-            remaining = "-".join(parts[current_idx:])
+            name_without_ext = "-".join(parts[current_idx:])
         else:
-            remaining = name_without_ext
+            name_without_ext = name_without_ext
 
         logging.error(f"Catalog number: {info['catalog_number']}")
-        # Look for material indicators from the end
-        material_indicators = sorted(MATERIAL_INDICATORS.keys(), key=len, reverse=True)
-        material_match = None
-        material_pos = len(remaining)
-        for ind in material_indicators:
-            pos = remaining.rfind(ind)
-            if pos != -1 and pos < material_pos:
-                material_match = ind
-                material_pos = pos
 
-        if material_match:
-            info["material"] = MATERIAL_INDICATORS[material_match]
-            # Extract the part before material for title
-            title_part = remaining[:material_pos].rstrip("-")
-            # And the part after for format
-            format_part = remaining[material_pos + len(material_match) :].lstrip("-")
-        else:
-            title_part = remaining
-            format_part = ""
-
-        logging.error(f"Material: {info['material']}, Title part: {title_part}, Format part: {format_part}")
-
-        # Look for dimensions in the format part
-        dim_match = re.search(r"(\d+[.,]?\d*)[\s]*[xX][\s]*(\d+[.,]?\d*)", format_part)
+        # Look for dimensions from the end
+        dim_match = re.search(
+            r"[-\s]*(\d+[.,]?\d*)[\s]*[xX][\s]*(\d+[.,]?\d*)[-\s]*$", name_without_ext
+        )
         if dim_match:
             width = float(dim_match.group(1).replace(",", "."))
             height = float(dim_match.group(2).replace(",", "."))
@@ -226,19 +212,32 @@ class ArtCatalog:
                 info["orientation"] = "horizontal"
             elif height > width:
                 info["orientation"] = "vertical"
+
+            name_without_ext = name_without_ext[: dim_match.start()].strip("-")
         else:
             # Look for standard size format (e.g., 15F)
-            size_match = re.search(r"(\d+)([FMPfmp])", format_part)
+            size_match = re.search(r"[-\s]*(\d+)([FMPfmp])[-\s]*$", name_without_ext)
             if size_match:
-                info["size_standard"] = size_match.group(0)
+                info["size_standard"] = size_match.group(1) + size_match.group(2)
                 info["size_type"] = size_match.group(2).upper()
 
                 # Try to get standard dimensions
                 std_dims = get_standard_size(info["size_standard"])
                 if std_dims:
                     info["width"], info["height"] = std_dims
+                name_without_ext = name_without_ext[: size_match.start()].strip("-")
 
-        logging.error(f"Size standard: {info['size_standard']}, Size type: {info['size_type']}. Width: {info['width']}, Height: {info['height']}")
+        # Look for material indicators from the end
+        material_indicators = sorted(MATERIAL_INDICATORS.keys(), key=len, reverse=True)
+        for ind in material_indicators:
+            if name_without_ext.endswith(f"-{ind}") or name_without_ext.endswith(ind):
+                info["material"] = MATERIAL_INDICATORS[ind]
+                name_without_ext = name_without_ext[: -(len(ind))].strip("-")
+                break
+
+        logging.error(
+            f"Size standard: {info['size_standard']}, Size type: {info['size_type']}. Width: {info['width']}, Height: {info['height']}"
+        )
 
         # Extract orientation from markers if not set by dimensions
         if not info["orientation"]:
@@ -247,11 +246,12 @@ class ArtCatalog:
             elif re.search(r"[Vv](?![\w])", name_without_ext):
                 info["orientation"] = "vertical"
 
-        # Clean up title
-        info["title"] = title_part.strip()
-        # Remove any trailing format indicators or dashes
-        info["title"] = info["title"].strip("-")
-        info["title"] = info["title"].strip()
+        # Clean up any remaining technical markers from the title
+        title = name_without_ext.strip("-")
+        for ind in material_indicators:
+            title = title.replace(f"-{ind}", "")
+            title = title.replace(ind, "")
+        info["title"] = title.strip("-").strip()
 
         if not info["title"]:
             logging.error(f"Could not extract title from filename: {filepath}")
