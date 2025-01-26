@@ -1,11 +1,12 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+// src/lib/supabase/server.ts
+import * as SupabaseClient from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import type { CookieOptions } from '@supabase/ssr'
 
 export const createClient = async () => {
   const cookieStore = cookies()
 
-  return createSupabaseClient(
+  return SupabaseClient.createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
