@@ -164,12 +164,14 @@ class ArtCatalog:
             info["catalog_number"] = parts[0]
             name_without_ext = name_without_ext[len(parts[0]) + 1 :]
 
-        # Split remaining content on -- if present
-        if "--" in name_without_ext:
-            technical_part, title_part = name_without_ext.split("--", 1)
-            # Further split technical part on single hyphens
+        # Handle cases where technical markers might be after --
+        parts = name_without_ext.split("--")
+        if len(parts) > 1:
+            # If we have multiple parts after --, assume the first part is title
+            # and concatenate the rest for technical information
+            title_part = parts[0]
+            technical_part = "-".join(parts[1:])
             technical_elements = technical_part.split("-")
-            # Keep title_part as is for now
         else:
             technical_elements = name_without_ext.split("-")
             title_part = None
@@ -205,7 +207,7 @@ class ArtCatalog:
 
         # For title, use title_part if it exists, otherwise build from parts
         if title_part:
-            # Remove any technical suffixes
+            # Clean up the title part
             title = title_part
             # Remove dimension markers
             title = re.sub(r"-\d+[.,]?\d*[\s]*[xX][\s]*\d+[.,]?\d*", "", title)
