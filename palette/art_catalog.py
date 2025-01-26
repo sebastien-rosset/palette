@@ -190,6 +190,7 @@ class ArtCatalog:
         else:
             remaining = name_without_ext
 
+        logging.error(f"Catalog number: {info['catalog_number']}")
         # Look for material indicators from the end
         material_indicators = sorted(MATERIAL_INDICATORS.keys(), key=len, reverse=True)
         material_match = None
@@ -209,6 +210,8 @@ class ArtCatalog:
         else:
             title_part = remaining
             format_part = ""
+
+        logging.error(f"Material: {info['material']}, Title part: {title_part}, Format part: {format_part}")
 
         # Look for dimensions in the format part
         dim_match = re.search(r"(\d+[.,]?\d*)[\s]*[xX][\s]*(\d+[.,]?\d*)", format_part)
@@ -235,6 +238,8 @@ class ArtCatalog:
                 if std_dims:
                     info["width"], info["height"] = std_dims
 
+        logging.error(f"Size standard: {info['size_standard']}, Size type: {info['size_type']}. Width: {info['width']}, Height: {info['height']}")
+
         # Extract orientation from markers if not set by dimensions
         if not info["orientation"]:
             if "H°" in name_without_ext or re.search(r"[Hh](?![\w])", name_without_ext):
@@ -243,21 +248,9 @@ class ArtCatalog:
                 info["orientation"] = "vertical"
 
         # Clean up title
-        # Handle double dash case
-        if "--" in title_part:
-            # Take everything after the last sequence of numbers before --
-            parts = title_part.split("--")
-            number_parts = parts[0].split("-")
-            title_start = 0
-            for i, part in enumerate(number_parts):
-                if part.isdigit():
-                    title_start = i + 1
-            title_part = " ".join(number_parts[title_start:]) + parts[1]
-
         info["title"] = title_part.strip()
         # Remove any trailing format indicators or dashes
-        info["title"] = re.sub(r"--$", "", info["title"])
-        info["title"] = re.sub(r"-+$", "", info["title"])
+        info["title"] = info["title"].strip("-")
         info["title"] = info["title"].strip()
 
         if not info["title"]:
