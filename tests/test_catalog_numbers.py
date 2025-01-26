@@ -110,5 +110,32 @@ def test_invalid_century_indicator():
     )  # Century indicator should be 2
 
 
+def test_post_2000_double_digit_item():
+    """Test post-2000 catalog number with double-digit item number"""
+    catalog = ArtCatalog("/dummy/path")
+    result = catalog.parse_catalog_number("21206-14")
+    assert result == {"year": 2012, "month": 6, "item_number": 14}
+
+
+def test_post_2000_various_years():
+    """Test post-2000 catalog numbers for different years"""
+    catalog = ArtCatalog("/dummy/path")
+
+    test_cases = [
+        ("21206-14", 2012, 6, 14),  # June 2012, item 14
+        ("21103-7", 2011, 3, 7),  # March 2011, item 7
+        ("20901-1", 2009, 1, 1),  # January 2009, item 1
+        ("21512-23", 2015, 12, 23),  # December 2015, item 23
+    ]
+
+    for catalog_num, expected_year, expected_month, expected_item in test_cases:
+        result = catalog.parse_catalog_number(catalog_num)
+        assert result == {
+            "year": expected_year,
+            "month": expected_month,
+            "item_number": expected_item,
+        }
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

@@ -362,14 +362,24 @@ class ArtCatalog:
         - Next two digits (MM): month
         - After hyphen (N): artwork number in that month
 
-        Post-2000 format: CYMM-N where:
+        Post-2000 formats:
+        1) CYMM-N where:
         - First digit (C): century indicator (2)
-        - Second digit (Y): last digit of year
-        - Next two digits (MM): month
-        - After hyphen (N): artwork number in that month
+        - Second digit (Y): last digit of year (0-9 for 2000-2009)
+        - Next two digits (MM): month (01-12)
+        - After hyphen (N): artwork number
+
+        2) CYYMM-N where:
+        - First digit (C): century indicator (2)
+        - Next two digits (YY): last two digits of year (00-99)
+        - Next two digits (MM): month (01-12)
+        - After hyphen (N): artwork number
 
         Args:
-            catalog_number: String like "702-1" (Feb 1997) or "2603-5" (March 2006)
+            catalog_number: String like:
+                "702-1" (Feb 1997)
+                "2603-5" (March 2006)
+                "21206-14" (June 2012)
 
         Returns:
             Dictionary containing year, month, and item_number if valid, None if invalid
@@ -398,9 +408,9 @@ class ArtCatalog:
 
                 year_digit = int(main_number[0])
                 month = int(main_number[1:3])
-                year = 1990 + year_digit  # Changed from 1900 to 1990
+                year = 1990 + year_digit
 
-            # Handle post-2000 format (4 digits: CYMM)
+            # Handle post-2000 format 1 (4 digits: CYMM)
             elif len(main_number) == 4:
                 if not main_number.isdigit():
                     return None
@@ -412,6 +422,19 @@ class ArtCatalog:
                 year_digit = int(main_number[1])
                 month = int(main_number[2:4])
                 year = 2000 + year_digit
+
+            # Handle post-2000 format 2 (5 digits: CYYMM)
+            elif len(main_number) == 5:
+                if not main_number.isdigit():
+                    return None
+
+                century_indicator = main_number[0]
+                if century_indicator != "2":  # Must start with 2 for 2000s
+                    return None
+
+                year_digits = int(main_number[1:3])
+                month = int(main_number[3:5])
+                year = 2000 + year_digits
 
             else:
                 return None
