@@ -74,7 +74,7 @@ def calculate_french_canvas_size(
     return (width, height)
 
 
-def generate_french_canvas_sizes(max_size: int = 50) -> dict:
+def generate_french_canvas_sizes(max_size: int = 100) -> dict:
     """
     Generate a dictionary of all French canvas sizes up to the specified maximum size.
 
