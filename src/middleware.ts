@@ -17,10 +17,21 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value
         },
         set(name: string, value: string, options: CookieOptions) {
-          response.cookies.set({ name, value, ...options })
+          // This is server side, we need to set HttpOnly cookies
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+            httpOnly: true,
+          })
         },
         remove(name: string, options: CookieOptions) {
-          response.cookies.set({ name, value: '', ...options })
+          response.cookies.set({
+            name,
+            value: '',
+            ...options,
+            httpOnly: true,
+          })
         },
       },
     }
