@@ -5,6 +5,7 @@ import re
 import csv
 import argparse
 import logging
+import time
 from typing import Dict, List, Optional, Tuple
 from PIL import Image
 import imagehash
@@ -140,8 +141,9 @@ MATERIAL_INDICATORS = {
 
 
 class ArtCatalog:
-    def __init__(self, base_path: str):
+    def __init__(self, base_path: str, output_file="art_catalog_report.csv"):
         self.base_path = base_path
+        self.output_file = output_file
         self.catalog: Dict[str, Dict] = {}
         self.image_extensions = (
             ".jpg",
@@ -153,6 +155,45 @@ class ArtCatalog:
             ".gif",
         )
         self.logger = logging.getLogger(self.__class__.__name__)
+        # Initialize CSV file with headers
+        self._initialize_csv()
+
+    def _initialize_csv(self):
+        """Create CSV file with headers"""
+        with open(self.output_file, "w", newline="", encoding="utf-8") as f:
+            csv_writer = csv.writer(f)
+            headers = [
+                "Image Hash",
+                "Path",
+                "Title",
+                "Year",
+                "Catalog Number",
+                "Orientation",
+                "Width",
+                "Height",
+                "Material",
+            ]
+            csv_writer.writerow(headers)
+
+    def _append_to_csv(
+        self, image_hash: str, filepath: str, info: dict, processing_time: float
+    ):
+        """Append a single entry to the CSV file"""
+        with open(self.output_file, "a", newline="", encoding="utf-8") as f:
+            csv_writer = csv.writer(f)
+            csv_writer.writerow(
+                [
+                    image_hash,
+                    filepath,
+                    info.get("title", ""),
+                    info.get("year", ""),
+                    info.get("catalog_number", ""),
+                    info.get("orientation", ""),
+                    info.get("width", ""),
+                    info.get("height", ""),
+                    info.get("material", ""),
+                ]
+            )
 
     def extract_contextual_year(self, filepath: str) -> Optional[int]:
         """
@@ -386,66 +427,74 @@ class ArtCatalog:
             return ""
 
     def find_and_catalog_images(self):
-        """Recursively find and catalog images from the base path"""
-        for root, dir, files in os.walk(self.base_path):
+        """Recursively find and catalog images from the base path, writing results incrementally"""
+        total_files = 0
+        processed_files = 0
+        start_time = time.time()
+
+        # First count total image files for progress tracking
+        for root, _, files in os.walk(self.base_path):
             for filename in files:
-                # Check if file is an image
+                if filename.lower().endswith(self.image_extensions):
+                    total_files += 1
+
+        self.logger.info(f"Found {total_files} image files to process")
+
+        # Now process each file
+        for root, _, files in os.walk(self.base_path):
+            for filename in files:
                 if not filename.lower().endswith(self.image_extensions):
                     continue
+
                 filepath = os.path.join(root, filename)
+                file_start_time = time.time()
 
-                # Extract contextual year
-                year = self.extract_contextual_year(filepath)
+                try:
+                    # Extract contextual year
+                    year = self.extract_contextual_year(filepath)
 
-                # Parse filename
-                file_info = self.parse_filename(filepath, filename, year)
+                    # Parse filename
+                    file_info = self.parse_filename(filepath, filename, year)
 
-                # Generate image hash
-                image_hash = self.generate_image_hash(filepath)
+                    # Generate image hash
+                    image_hash = self.generate_image_hash(filepath)
 
-                # Store in catalog
-                if image_hash not in self.catalog:
-                    logging.info(f"Cataloging {filepath}: {file_info}")
-                    self.catalog[image_hash] = {"files": [filepath], "info": file_info}
-                else:
-                    # If hash exists, add this file to the list of duplicate/similar images
-                    self.catalog[image_hash]["files"].append(filepath)
+                    if image_hash:
+                        # Store in memory catalog
+                        if image_hash not in self.catalog:
+                            self.catalog[image_hash] = {"files": [], "info": file_info}
+                        self.catalog[image_hash]["files"].append(filepath)
 
-    def generate_csv_report(self, output_file="art_catalog_report.csv"):
-        """Generate a comprehensive CSV report of the cataloged images"""
-        with open(output_file, "w", newline="", encoding="utf-8") as f:
-            csv_writer = csv.writer(f)
+                        # Write to CSV immediately
+                        processing_time = time.time() - file_start_time
+                        self._append_to_csv(
+                            image_hash, filepath, file_info, processing_time
+                        )
 
-            # Write header
-            headers = [
-                "Image Hash",
-                "Duplicate Count",
-                "Title",
-                "Year",
-                "Catalog Number",
-                "Orientation",
-                "Width",
-                "Height",
-                "File Paths",
-            ]
-            csv_writer.writerow(headers)
+                    processed_files += 1
+                    if processed_files % 100 == 0:  # Log progress every 100 files
+                        elapsed_time = time.time() - start_time
+                        avg_time_per_file = elapsed_time / processed_files
+                        remaining_files = total_files - processed_files
+                        estimated_remaining_time = remaining_files * avg_time_per_file
 
-            # Write data rows
-            for image_hash, image_data in self.catalog.items():
-                info = image_data["info"]
-                csv_writer.writerow(
-                    [
-                        image_hash,
-                        len(image_data["files"]),
-                        info.get("title", ""),
-                        info.get("year", ""),
-                        info.get("catalog_number", ""),
-                        info.get("orientation", ""),
-                        info.get("width", ""),
-                        info.get("height", ""),
-                        "; ".join(image_data["files"]),
-                    ]
-                )
+                        self.logger.info(
+                            f"Processed {processed_files}/{total_files} files "
+                            f"({processed_files/total_files*100:.1f}%) - "
+                            f"Est. remaining time: {estimated_remaining_time/60:.1f} minutes"
+                        )
+
+                except Exception as e:
+                    self.logger.error(f"Error processing {filepath}: {str(e)}")
+                    # Write error entry to CSV
+                    self._append_to_csv(
+                        "ERROR", filepath, {}, time.time() - file_start_time
+                    )
+
+        total_time = time.time() - start_time
+        self.logger.info(
+            f"Cataloging complete. Processed {processed_files} files in {total_time/60:.1f} minutes"
+        )
 
 
 def main():
