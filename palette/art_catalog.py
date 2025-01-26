@@ -195,7 +195,7 @@ class ArtCatalog:
         else:
             name_without_ext = name_without_ext
 
-        logging.error(f"Catalog number: {info['catalog_number']}")
+        logging.debug(f"Catalog number: {info['catalog_number']}")
 
         # Look for dimensions from the end
         dim_match = re.search(
@@ -235,8 +235,8 @@ class ArtCatalog:
                 name_without_ext = name_without_ext[: -(len(ind))].strip("-")
                 break
 
-        logging.error(
-            f"Size standard: {info['size_standard']}, Size type: {info['size_type']}. Width: {info['width']}, Height: {info['height']}"
+        logging.debug(
+            f"Size standard: {info['size_standard']}, Size type: {info['size_type']}. Width: {info['width']}, Height: {info['height']}. Material: {info['material']}"
         )
 
         # Extract orientation from markers if not set by dimensions
@@ -247,11 +247,8 @@ class ArtCatalog:
                 info["orientation"] = "vertical"
 
         # Clean up any remaining technical markers from the title
-        title = name_without_ext.strip("-")
-        for ind in material_indicators:
-            title = title.replace(f"-{ind}", "")
-            title = title.replace(ind, "")
-        info["title"] = title.strip("-").strip()
+        logging.debug(f"Name without ext: {name_without_ext}")
+        info["title"] = name_without_ext.strip("-").strip()
 
         if not info["title"]:
             logging.error(f"Could not extract title from filename: {filepath}")
