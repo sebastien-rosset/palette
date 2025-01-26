@@ -8,7 +8,7 @@ import logging
 import sys
 import time
 import traceback
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image
 import imagehash
 
@@ -352,7 +352,7 @@ class ArtCatalog:
         logging.debug(f"Title: {info['title']}, Material: {info['material']}")
         return info
 
-    def parse_catalog_number(self, catalog_number: str) -> dict:
+    def parse_catalog_number(self, catalog_number: str) -> Optional[Dict[str, Any]]:
         """
         Parse a catalog number into its components.
 
@@ -371,30 +371,20 @@ class ArtCatalog:
             catalog_number: String like "702-1" (Feb 1997) or "2603-5" (March 2006)
 
         Returns:
-            Dictionary containing year, month, and item_number
-
-        Examples:
-            "702-1" -> {
-                "year": 1997,
-                "month": 2,
-                "item_number": 1
-            }
-            "2603-5" -> {
-                "year": 2006,
-                "month": 3,
-                "item_number": 5
-            }
+            Dictionary containing year, month, and item_number if valid, None if invalid
         """
-        if not catalog_number:
+        if not catalog_number or not isinstance(catalog_number, str):
             return None
 
-        # Split by hyphen to separate main number from item number
-        parts = catalog_number.split("-")
-        if len(parts) < 2:
-            return {"catalog_number": catalog_number}
+        # Split by first hyphen to separate main number from item number
+        parts = catalog_number.split("-", 1)
+        if len(parts) != 2:
+            return None
 
-        main_number = parts[0]
-        item_number = parts[1]
+        main_number, item_part = parts
+
+        # Get first part of item number (before any additional hyphens)
+        item_number = item_part.split("-")[0]
 
         try:
             # Convert item number to integer
@@ -402,35 +392,37 @@ class ArtCatalog:
 
             # Handle pre-2000 format (3 digits: YMM)
             if len(main_number) == 3:
+                if not main_number.isdigit():
+                    return None
+
                 year_digit = int(main_number[0])
                 month = int(main_number[1:3])
-                year = 1900 + year_digit
+                year = 1990 + year_digit  # Changed from 1900 to 1990
 
             # Handle post-2000 format (4 digits: CYMM)
             elif len(main_number) == 4:
+                if not main_number.isdigit():
+                    return None
+
                 century_indicator = main_number[0]
-                if century_indicator != "2":
-                    return {"catalog_number": catalog_number}
+                if century_indicator != "2":  # Must start with 2 for 2000s
+                    return None
+
                 year_digit = int(main_number[1])
                 month = int(main_number[2:4])
                 year = 2000 + year_digit
 
             else:
-                return {"catalog_number": catalog_number}
+                return None
 
             # Validate month
             if month < 1 or month > 12:
-                return {"catalog_number": catalog_number}
+                return None
 
-            return {
-                "catalog_number": catalog_number,
-                "year": year,
-                "month": month,
-                "item_number": item_number,
-            }
+            return {"year": year, "month": month, "item_number": item_number}
 
         except (ValueError, IndexError):
-            return {"catalog_number": catalog_number}
+            return None
 
     def generate_image_hash(self, filepath: str) -> str:
         """Generate a perceptual hash of the image"""

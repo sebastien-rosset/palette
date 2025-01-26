@@ -92,4 +92,3 @@ def test_title_with_missing_format():
     assert result["title"] == "Brest, le port de commerce"
     assert result["width"] == 80.0
     assert result["height"] == 40.0
-
