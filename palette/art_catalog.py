@@ -262,15 +262,39 @@ class ArtCatalog:
             "height": "",
             "size_type": "",
             "sold": False,
+            "is_copy": False,
+            "buyer": "",
+            "sold": False,
         }
 
         # Remove file extension
         name_without_ext = os.path.splitext(filename)[0]
 
+        # Some files start with "OUI". Not sure why, but we need to remove it.
+        name_without_ext = re.sub(
+            r"^(?:OUI[\s-]+)+", "", name_without_ext, flags=re.IGNORECASE
+        )
+
         # First check for trailing copy number (e.g., "(1)", "(2)")
         copy_match = re.search(r"\(\d+\)$", name_without_ext)
         if copy_match:
             name_without_ext = name_without_ext[: copy_match.start()].strip("-")
+
+        copy_indicators = [" - Copie", "-Copie", " -Copie"]
+        for indicator in copy_indicators:
+            if name_without_ext.endswith(indicator):
+                info["is_copy"] = True
+                name_without_ext = name_without_ext[: -(len(indicator))].strip()
+                break
+
+        vendu_match = re.search(
+            r"VENDU(?:\s+([^-]+))?(?:\s*-\s*)?$", name_without_ext, re.IGNORECASE
+        )
+        if vendu_match:
+            info["sold"] = True
+            if vendu_match.group(1):  # Buyer name was captured
+                info["buyer"] = vendu_match.group(1).strip()
+            name_without_ext = name_without_ext[: vendu_match.start()].strip()
 
         # First extract the reference numbers from the start
         parts = name_without_ext.split("-")
@@ -355,7 +379,9 @@ class ArtCatalog:
             logging.error(f"Could not extract title from filename: {filepath}")
             info["title"] = filename
 
-        logging.debug(f"Title: {info['title']}, Material: {info['material']}")
+        logging.info(
+            f"Title: {info['title']}, Material: {info['material']}. Filename: {filename}"
+        )
         return info
 
     def parse_catalog_number(self, catalog_number: str) -> Optional[Dict[str, Any]]:
