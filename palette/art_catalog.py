@@ -126,19 +126,23 @@ MATERIAL_INDICATORS = {
     "H°": "Huile (horizontal)",
     "H": "Huile",
     "Dcr": "Dessin à la craie",
-    "Pg": "Peinture à gouache",
-    "Lch": "Lavis à l'encre de chine",
-    "L/s": "Lavis sur",
+    "Pg": "Pastel gras",
+    "Lch": "Lavis chinois",
+    "L/s": "Lavis sur soie",
     "Ps": "Pastel",
-    "Lch/s": "Lavis à l'encre de chine sur",
+    "Lch/s": "Lavis chinois sur soie",
     "L": "Lavis",
-    "Ac": "Aquarelle",
+    "Ac": "Acrylique",
     "Aps": "Aquarelle et pastel",
     "LTM": "Lavis technique mixte",
     "DL": "Dessin lavis",
     "D": "Dessin",
-    "Ac/p": "Aquarelle et peinture",
+    "Ac/p": "Acrylique sur papier",
     "Tm": "Technique mixte",
+    "Pséc": "Pastel sur écorce",
+    "Pgséc": "Pastel gras sur écorce",
+    "Pgsécor": "Pastel gras sur écorce",
+    "Ps écorce": "Pastel écorce",
 }
 
 
@@ -257,6 +261,7 @@ class ArtCatalog:
             "width": "",
             "height": "",
             "size_type": "",
+            "sold": False,
         }
 
         # Remove file extension
@@ -566,7 +571,6 @@ def main():
     # Create and run catalog
     catalog = ArtCatalog(args.path)
     catalog.find_and_catalog_images()
-    catalog.generate_csv_report(args.output)
     print(f"Catalog report generated: {args.output}")
 
 
