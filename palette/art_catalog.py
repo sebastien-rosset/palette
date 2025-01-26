@@ -379,9 +379,13 @@ class ArtCatalog:
             logging.error(f"Could not extract title from filename: {filepath}")
             info["title"] = filename
 
-        logging.info(
-            f"Title: {info['title']}, Material: {info['material']}. Filename: {filename}"
-        )
+        log_parts = [f"Title: {info['title']}"]
+        if info['material']:
+            log_parts.append(f"Material: {info['material']}")
+        if info['width'] and info['height']:  # Only add dimensions if both are set
+            log_parts.append(f"Dimensions: {info['width']}X{info['height']}")
+        log_parts.append(f"Filename: {filename}")
+        logging.info(". ".join(log_parts))
         return info
 
     def parse_catalog_number(self, catalog_number: str) -> Optional[Dict[str, Any]]:
