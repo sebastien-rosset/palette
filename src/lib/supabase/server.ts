@@ -1,33 +1,49 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import type { CookieOptions } from '@supabase/ssr'
 
-export const createClient = async () => {
+export const createServerSupabaseClient = async () => {
   const cookieStore = cookies()
 
-  return createServerClient(
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: {
+        name: 'sb-access-token',
+        domain: process.env.NODE_ENV === 'production' 
+          ? process.env.NEXT_PUBLIC_SITE_URL?.replace('https://', '') 
+          : undefined,
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
       cookies: {
-        async get(name: string) {
-          return cookieStore.get(name)?.value
+        get(name: string) {
+          return cookieStore.get(name)?.value ?? null
         },
-        async set(name: string, value: string, options: CookieOptions) {
+        set(name: string, value: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value, ...options })
+            cookieStore.set({ 
+              name, 
+              value, 
+              ...options 
+            })
           } catch (error) {
-            // Handle edge cases where cookies cannot be set
             console.error('Error setting cookie:', error)
           }
         },
-        async remove(name: string, options: CookieOptions) {
+        remove(name: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value: '', ...options })
+            cookieStore.delete({ 
+              name, 
+              ...options 
+            })
           } catch (error) {
             console.error('Error removing cookie:', error)
           }
         },
       },
+      cookieEncoding: 'raw'
     }
   )
 }
