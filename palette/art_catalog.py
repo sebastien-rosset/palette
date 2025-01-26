@@ -28,32 +28,75 @@ def setup_logging(log_level=logging.INFO, log_file=None):
         logging.getLogger().addHandler(file_handler)
 
 
-FRENCH_CANVAS_SIZES = {
-    # Figure (portrait) sizes
-    "F": {
-        "0": (12, 16),
-        "1": (15, 22),
-        "2": (22, 33),
-        "3": (24, 35),
-        "4": (33, 41),
-        "5": (41, 50),
-        # Add more as needed
-    },
-    # Marine (seascape) sizes
-    "M": {
-        "0": (15, 22),
-        "1": (22, 33),
-        "2": (33, 41),
-        # Add more as needed
-    },
-    # Landscape sizes
-    "P": {
-        "0": (15, 22),
-        "1": (22, 33),
-        "2": (33, 41),
-        # Add more as needed
-    },
-}
+def calculate_french_canvas_size(
+    size_number: int, format_type: str
+) -> tuple[float, float]:
+    """
+    Calculate French standard canvas size based on size number and format.
+
+    Args:
+        size_number: The size number (0, 1, 2, etc.)
+        format_type: 'F' for Figure, 'M' for Marine, 'P' for Paysage (Landscape)
+
+    Returns:
+        Tuple of (width, height) in centimeters
+    """
+    # Base size (Size 0) in centimeters
+    BASE_SIZES = {
+        "F": (12, 16),  # Figure (portrait)
+        "M": (15, 22),  # Marine (seascape)
+        "P": (15, 22),  # Paysage (landscape)
+    }
+
+    if format_type not in BASE_SIZES:
+        raise ValueError(f"Unknown format type: {format_type}")
+
+    if size_number < 0:
+        raise ValueError("Size number cannot be negative")
+
+    base_width, base_height = BASE_SIZES[format_type]
+
+    if size_number == 0:
+        return (base_width, base_height)
+
+    # The French system approximately follows a geometric progression
+    # Each size up multiplies the area by roughly 2
+    # To maintain proportions, width and height each increase by √2
+    scale_factor = pow(2, size_number / 2)  # sqrt(2) for each size number
+
+    width = round(base_width * scale_factor, 1)
+    height = round(base_height * scale_factor, 1)
+
+    # For Paysage (landscape) format, swap dimensions
+    if format_type == "P":
+        width, height = height, width
+
+    return (width, height)
+
+
+def generate_french_canvas_sizes(max_size: int = 50) -> dict:
+    """
+    Generate a dictionary of all French canvas sizes up to the specified maximum size.
+
+    Args:
+        max_size: Maximum size number to generate (default 12)
+
+    Returns:
+        Dictionary of canvas sizes in the same format as FRENCH_CANVAS_SIZES
+    """
+    sizes = {"F": {}, "M": {}, "P": {}}
+
+    for format_type in sizes:
+        for size in range(max_size + 1):
+            sizes[format_type][str(size)] = calculate_french_canvas_size(
+                size, format_type
+            )
+
+    return sizes
+
+
+# Generate the full size dictionary
+FRENCH_CANVAS_SIZES = generate_french_canvas_sizes()
 
 
 def get_standard_size(standard: str) -> Optional[Tuple[int, int]]:
@@ -73,7 +116,7 @@ def get_standard_size(standard: str) -> Optional[Tuple[int, int]]:
     try:
         return FRENCH_CANVAS_SIZES.get(type_, {}).get(size)
     except (TypeError, KeyError):
-        return None
+        raise ValueError(f"Invalid standard size: {standard}")
 
 
 MATERIAL_INDICATORS = {
@@ -195,8 +238,6 @@ class ArtCatalog:
         else:
             name_without_ext = name_without_ext
 
-        logging.debug(f"Catalog number: {info['catalog_number']}")
-
         # Look for dimensions from the end
         dim_match = re.search(
             r"[-\s]*(\d+[.,]?\d*)[\s]*[xX][\s]*(\d+[.,]?\d*)[-\s]*$", name_without_ext
@@ -225,6 +266,8 @@ class ArtCatalog:
                 std_dims = get_standard_size(info["size_standard"])
                 if std_dims:
                     info["width"], info["height"] = std_dims
+                else:
+                    raise ValueError(f"Invalid standard size: {info['size_standard']}")
                 name_without_ext = name_without_ext[: size_match.start()].strip("-")
 
         # Look for material indicators from the end
@@ -235,10 +278,6 @@ class ArtCatalog:
                 name_without_ext = name_without_ext[: -(len(ind))].strip("-")
                 break
 
-        logging.debug(
-            f"Size standard: {info['size_standard']}, Size type: {info['size_type']}. Width: {info['width']}, Height: {info['height']}. Material: {info['material']}"
-        )
-
         # Extract orientation from markers if not set by dimensions
         if not info["orientation"]:
             if "H°" in name_without_ext or re.search(r"[Hh](?![\w])", name_without_ext):
@@ -247,13 +286,13 @@ class ArtCatalog:
                 info["orientation"] = "vertical"
 
         # Clean up any remaining technical markers from the title
-        logging.debug(f"Name without ext: {name_without_ext}")
         info["title"] = name_without_ext.strip("-").strip()
 
         if not info["title"]:
             logging.error(f"Could not extract title from filename: {filepath}")
             info["title"] = filename
 
+        logging.debug(f"Title: {info['title']}, Material: {info['material']}")
         return info
 
     def generate_image_hash(self, filepath: str) -> str:
