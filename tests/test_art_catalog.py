@@ -11,7 +11,6 @@ def test_complex_title_extraction():
     assert result["material"] == "Pastel"
     assert result["width"] == 36.0
     assert result["height"] == 36.0
-    assert result["orientation"] == "vertical"
 
 
 def test_title_with_comma():

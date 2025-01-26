@@ -156,26 +156,21 @@ class ArtCatalog:
         # Remove file extension
         name_without_ext = os.path.splitext(filename)[0]
 
-        # First split on mandatory technical elements
-        prefix_elements = []
-        title_and_technical = name_without_ext
+        # Extract catalog number first (it's always at the start if present)
+        parts = name_without_ext.split("-")
+        if parts[0].isdigit():
+            info["catalog_number"] = parts[0]
+            name_without_ext = name_without_ext[len(parts[0]) + 1 :]
 
-        # Handle catalog number which comes before any -- separator
-        first_part = name_without_ext.split("-")[0]
-        if first_part.isdigit():
-            info["catalog_number"] = first_part
-            title_and_technical = name_without_ext[len(first_part) + 1 :]
-
-        # Split on -- if it exists
-        main_parts = title_and_technical.split("--", 1)
-
-        # Initialize parts based on -- split
-        if len(main_parts) > 1:
-            prefix, title_part = main_parts
-            prefix_elements = prefix.split("-")
-            parts = [title_part]  # Keep the title as a single unit
+        # Split remaining content on -- if present
+        if "--" in name_without_ext:
+            technical_part, title_part = name_without_ext.split("--", 1)
+            # Further split technical part on single hyphens
+            technical_elements = technical_part.split("-")
+            # Keep title_part as is for now
         else:
-            parts = title_and_technical.split("-")
+            technical_elements = name_without_ext.split("-")
+            title_part = None
 
         # Detect material/technique (sort by length to match longer patterns first)
         material_indicators = sorted(MATERIAL_INDICATORS.keys(), key=len, reverse=True)
@@ -206,31 +201,43 @@ class ArtCatalog:
             elif info["width"] < info["height"]:
                 info["orientation"] = "vertical"
 
-        # Extract title by cleaning up technical elements
-        title_elements = []
-        technical_markers = set(
-            [
+        # For title, use title_part if it exists, otherwise build from parts
+        if title_part:
+            # Remove any technical suffixes
+            title = title_part
+            # Remove dimension markers
+            title = re.sub(r"-\d+[.,]?\d*[\s]*[xX][\s]*\d+[.,]?\d*", "", title)
+            # Remove material markers
+            for ind in material_indicators:
+                title = title.replace(f"-{ind}", "")
+                title = title.replace(ind, "")
+            info["title"] = title.strip()
+        else:
+            # Build title from parts, excluding technical elements
+            title_parts = []
+            technical_markers = {
                 info["catalog_number"],
-                material_match if material_match else "",
                 dim_match.group(0) if dim_match else "",
-            ]
-        )
+                material_match if material_match else "",
+            }
 
-        for part in parts:
-            if part and part not in technical_markers:
-                # Remove any remaining technical markers
-                clean_part = part
-                for marker in technical_markers:
-                    if marker:
-                        clean_part = clean_part.replace(marker, "")
-                if clean_part.strip() and not clean_part.strip().isdigit():
-                    title_elements.append(clean_part.strip())
+            for part in technical_elements:
+                if part and part not in technical_markers:
+                    # Remove any technical markers but preserve rest
+                    clean_part = part
+                    for marker in technical_markers:
+                        if marker:
+                            clean_part = clean_part.replace(marker, "")
+                    if clean_part.strip() and not clean_part.strip().isdigit():
+                        title_parts.append(clean_part.strip())
 
-        # Join title elements and clean up
-        info["title"] = " ".join(title_elements).strip()
-        # Remove any trailing technical indicators
-        info["title"] = re.sub(r"-?\s*(Ps|H|Ac|Lch)\s*$", "", info["title"])
-        info["title"] = info["title"].strip()
+            info["title"] = " ".join(title_parts).strip()
+
+        # Final cleanup of the title
+        info["title"] = re.sub(r"\s+", " ", info["title"])  # normalize spaces
+        info["title"] = re.sub(r"-+$", "", info["title"])  # remove trailing hyphens
+        info["title"] = re.sub(r"^-+", "", info["title"])  # remove leading hyphens
+        info["title"] = info["title"].strip()  # final strip
 
         return info
 
