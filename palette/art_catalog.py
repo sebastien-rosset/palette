@@ -5,7 +5,9 @@ import re
 import csv
 import argparse
 import logging
+import sys
 import time
+import traceback
 from typing import Dict, List, Optional, Tuple
 from PIL import Image
 import imagehash
@@ -167,7 +169,9 @@ class ArtCatalog:
                 "Path",
                 "Title",
                 "Year",
+                "Month",
                 "Catalog Number",
+                "Item Number",
                 "Orientation",
                 "Width",
                 "Height",
@@ -187,7 +191,9 @@ class ArtCatalog:
                     filepath,
                     info.get("title", ""),
                     info.get("year", ""),
+                    info.get("month", ""),
                     info.get("catalog_number", ""),
+                    info.get("item_number", ""),
                     info.get("orientation", ""),
                     info.get("width", ""),
                     info.get("height", ""),
@@ -241,7 +247,9 @@ class ArtCatalog:
         info = {
             "original_filename": filename,
             "year": default_year,
+            "month": "",
             "catalog_number": "",
+            "item_number": "",
             "title": "",
             "material": "",
             "orientation": "",
@@ -274,7 +282,14 @@ class ArtCatalog:
 
         if ref_parts:
             catalog_number = "-".join(ref_parts)
-            info["catalog_number"] = self.parse_catalog_number(catalog_number)
+            info["catalog_number"] = catalog_number
+            catalog_parts = self.parse_catalog_number(catalog_number)
+            if "year" in catalog_parts:
+                info["year"] = catalog_parts["year"]
+            if "month" in catalog_parts:
+                info["month"] = catalog_parts["month"]
+            if "item_number" in catalog_parts:
+                info["item_number"] = catalog_parts["item_number"]
             # Get the rest of the string, preserving the first character of the title
             name_without_ext = "-".join(parts[current_idx:])
         else:
@@ -485,10 +500,21 @@ class ArtCatalog:
                         )
 
                 except Exception as e:
-                    self.logger.error(f"Error processing {filepath}: {str(e)}")
-                    # Write error entry to CSV
-                    self._append_to_csv(
-                        "ERROR", filepath, {}, time.time() - file_start_time
+                    # Get the full exception traceback
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+
+                    # Format the traceback into a string
+                    tb_lines = traceback.format_exception(
+                        exc_type, exc_value, exc_traceback
+                    )
+                    tb_text = "".join(tb_lines)
+
+                    # Log detailed error information
+                    self.logger.error(
+                        f"Error processing {filepath}\n"
+                        f"Exception type: {exc_type.__name__}\n"
+                        f"Exception message: {str(e)}\n"
+                        f"Traceback:\n{tb_text}"
                     )
 
         total_time = time.time() - start_time
