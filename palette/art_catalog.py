@@ -238,6 +238,8 @@ class ArtCatalog:
         info["title"] = re.sub(r"-+$", "", info["title"])  # remove trailing hyphens
         info["title"] = re.sub(r"^-+", "", info["title"])  # remove leading hyphens
         info["title"] = info["title"].strip()  # final strip
+        if not info["title"]:
+            raise ValueError(f"Could not extract title from filename: {filename}")
 
         return info
 
