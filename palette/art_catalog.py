@@ -9,11 +9,96 @@ from typing import Dict, List, Optional, Tuple
 from PIL import Image
 import imagehash
 
+def setup_logging(log_level=logging.INFO, log_file=None):
+    """Configure logging with optional file output"""
+    # Configure base logger
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler()  # Console output
+        ]
+    )
+
+    # Add file handler if log_file is specified
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        ))
+        logging.getLogger().addHandler(file_handler)
+
+FRENCH_CANVAS_SIZES = {
+    # Figure (portrait) sizes
+    'F': {
+        '0': (12, 16),
+        '1': (15, 22),
+        '2': (22, 33),
+        '3': (24, 35),
+        '4': (33, 41),
+        '5': (41, 50),
+        # Add more as needed
+    },
+    # Marine (seascape) sizes
+    'M': {
+        '0': (15, 22),
+        '1': (22, 33),
+        '2': (33, 41),
+        # Add more as needed
+    },
+    # Landscape sizes
+    'P': {
+        '0': (15, 22),
+        '1': (22, 33),
+        '2': (33, 41),
+        # Add more as needed
+    }
+}
+
+def get_standard_size(standard: str) -> Optional[Tuple[int, int]]:
+    """
+    Convert French canvas standard size to dimensions
+    
+    :param standard: Size standard (e.g. '12F', '2P')
+    :return: Tuple of (width, height) in cm, or None if not found
+    """
+    match = re.match(r'(\d+)([FMPfmp])', standard)
+    if not match:
+        return None
+    
+    size, type_ = match.groups()
+    type_ = type_.upper()
+    
+    try:
+        return FRENCH_CANVAS_SIZES.get(type_, {}).get(size)
+    except (TypeError, KeyError):
+        return None
+
+MATERIAL_INDICATORS = {
+    'H°': 'Huile (horizontal)',
+    'H': 'Huile',
+    'Dcr': 'Dessin à la craie',
+    'Pg': 'Peinture à gouache',
+    'Lch': 'Lavis à l''encre de chine',
+    'L/s': 'Lavis sur',
+    'Ps': 'Pastel',
+    'Lch/s': 'Lavis à l''encre de chine sur',
+    'L': 'Lavis',
+    'Ac': 'Aquarelle',
+    'Aps': 'Aquarelle et pastel',
+    'LTM': 'Lavis technique mixte',
+    'DL': 'Dessin lavis',
+    'D': 'Dessin',
+    'Ac/p': 'Aquarelle et peinture',
+    'Tm': 'Technique mixte'
+}
+
 class ArtCatalog:
     def __init__(self, base_path: str):
         self.base_path = base_path
         self.catalog: Dict[str, Dict] = {}
         self.image_extensions = ('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp', '.gif')
+        self.logger = logging.getLogger(self.__class__.__name__)
     
     def extract_contextual_year(self, filepath: str) -> Optional[int]:
         """
@@ -41,17 +126,20 @@ class ArtCatalog:
                 return year
         
         return None
-    
+
     def parse_filename(self, filename: str, default_year: Optional[int] = None) -> Dict:
-        """Extract information from filename"""
+        """Extract detailed information from filename"""
         info = {
             'original_filename': filename,
             'year': default_year,
             'catalog_number': '',
             'title': '',
+            'material': '',
             'orientation': '',
+            'size_standard': '',
             'width': '',
-            'height': ''
+            'height': '',
+            'size_type': ''
         }
         
         # Remove file extension
@@ -65,24 +153,54 @@ class ArtCatalog:
             info['catalog_number'] = parts[0]
             parts = parts[1:]
         
-        # Last part might contain size information
-        size_match = re.search(r'(\d+)[xX](\d+)', parts[-1])
-        if size_match:
-            info['width'] = int(size_match.group(1))
-            info['height'] = int(size_match.group(2))
-            parts = parts[:-1]
+        # Detect material/technique
+        material_match = next((ind for ind in MATERIAL_INDICATORS if ind in parts), None)
+        if material_match:
+            info['material'] = MATERIAL_INDICATORS[material_match]
+        
+        # Detect standard size and type (F, M, P, etc.)
+        size_std_match = re.search(r'(\d+)([FMPfmp])', name_without_ext)
+        if size_std_match:
+            info['size_standard'] = size_std_match.group(0)
+            info['size_type'] = size_std_match.group(2).upper()
+            
+            # Attempt to get standard dimensions
+            std_dims = get_standard_size(info['size_standard'])
+            if std_dims:
+                info['width'], info['height'] = std_dims
+        
+        # Detect numeric dimensions with dot or comma as decimal separator
+        dim_match = re.search(r'(\d+[.,]?\d*)[\s]*[xX][\s]*(\d+[.,]?\d*)', name_without_ext)
+        if dim_match:
+            width = float(dim_match.group(1).replace(',', '.'))
+            height = float(dim_match.group(2).replace(',', '.'))
+            info['width'] = width
+            info['height'] = height
         
         # Check for orientation
-        orientation_match = re.search(r'^[Hh]°?$', parts[-1])
-        if orientation_match:
+        if re.search(r'[Hh]°?', name_without_ext):
             info['orientation'] = 'horizontal'
-            parts = parts[:-1]
-        elif len(parts) > 1 and re.search(r'^[Vv]$', parts[-1]):
+        elif re.search(r'[Vv]', name_without_ext):
             info['orientation'] = 'vertical'
-            parts = parts[:-1]
         
-        # Remaining parts form the title
-        info['title'] = ' '.join(parts)
+        # Prepare title removal markers
+        title_markers = [
+            info['catalog_number'],
+            *[ind for ind in MATERIAL_INDICATORS if ind in parts],
+            r'\d+[FMPfmp]',  # Size standards
+            r'\d+[xX]\d+',   # Dimensions
+            r'[Hh]°?',       # Horizontal
+            r'[Vv]',         # Vertical
+        ]
+        
+        # Construct title by removing these markers
+        title_parts = []
+        for part in parts:
+            # Check if part matches any marker
+            if not any(re.search(marker, part) for marker in title_markers):
+                title_parts.append(part)
+        
+        info['title'] = ' '.join(title_parts).strip()
         
         return info
     
@@ -158,9 +276,16 @@ def main():
     parser.add_argument('--path', type=str, help='Directory containing art images')
     parser.add_argument('-o', '--output', type=str, default='art_catalog_report.csv', 
                         help='Output CSV file path (default: art_catalog_report.csv)')
-    
+    parser.add_argument('-l', '--log', type=str, 
+                        help='Log file path (optional)')
+    parser.add_argument('--log-level', type=str, 
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], 
+                        default='INFO',
+                        help='Logging level (default: INFO)')
     # Parse arguments
     args = parser.parse_args()
+    log_level = getattr(logging, args.log_level)
+    setup_logging(log_level=log_level, log_file=args.log)
     
     # Create and run catalog
     catalog = ArtCatalog(args.path)
