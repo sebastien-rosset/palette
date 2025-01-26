@@ -116,7 +116,7 @@ def get_standard_size(standard: str) -> Optional[Tuple[int, int]]:
     try:
         return FRENCH_CANVAS_SIZES.get(type_, {}).get(size)
     except (TypeError, KeyError):
-        raise ValueError(f"Invalid standard size: {standard}")
+        return None
 
 
 MATERIAL_INDICATORS = {
