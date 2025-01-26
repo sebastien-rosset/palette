@@ -156,20 +156,28 @@ class ArtCatalog:
         # Remove file extension
         name_without_ext = os.path.splitext(filename)[0]
 
-        # First split by first occurrence of '--' if it exists
-        parts = name_without_ext.split("--", 1)
-        if len(parts) > 1:
-            metadata, title_part = parts
-            parts = metadata.split("-") + [title_part]
+        # First split on mandatory technical elements
+        prefix_elements = []
+        title_and_technical = name_without_ext
+
+        # Handle catalog number which comes before any -- separator
+        first_part = name_without_ext.split("-")[0]
+        if first_part.isdigit():
+            info["catalog_number"] = first_part
+            title_and_technical = name_without_ext[len(first_part) + 1 :]
+
+        # Split on -- if it exists
+        main_parts = title_and_technical.split("--", 1)
+
+        # Initialize parts based on -- split
+        if len(main_parts) > 1:
+            prefix, title_part = main_parts
+            prefix_elements = prefix.split("-")
+            parts = [title_part]  # Keep the title as a single unit
         else:
-            parts = name_without_ext.split("-")
+            parts = title_and_technical.split("-")
 
-        # First part might be a catalog/sequence number
-        if parts and parts[0].isdigit():
-            info["catalog_number"] = parts[0]
-            parts = parts[1:]
-
-        # Detect material/technique
+        # Detect material/technique (sort by length to match longer patterns first)
         material_indicators = sorted(MATERIAL_INDICATORS.keys(), key=len, reverse=True)
         material_match = next(
             (ind for ind in material_indicators if ind in name_without_ext), None
@@ -177,70 +185,52 @@ class ArtCatalog:
         if material_match:
             info["material"] = MATERIAL_INDICATORS[material_match]
 
-        # Detect standard size and type (F, M, P, etc.)
-        size_std_match = re.search(r"(\d+)([FMPfmp])", name_without_ext)
-        if size_std_match:
-            info["size_standard"] = size_std_match.group(0)
-            info["size_type"] = size_std_match.group(2).upper()
-
-            # Attempt to get standard dimensions
-            std_dims = get_standard_size(info["size_standard"])
-            if std_dims:
-                info["width"], info["height"] = std_dims
-
-        # Detect numeric dimensions with dot or comma as decimal separator
-        dim_pattern = r"(\d+[.,]?\d*)[\s]*[xX][\s]*(\d+[.,]?\d*)"
-        dim_match = re.search(dim_pattern, name_without_ext)
+        # Detect dimensions
+        dim_match = re.search(
+            r"(\d+[.,]?\d*)[\s]*[xX][\s]*(\d+[.,]?\d*)", name_without_ext
+        )
         if dim_match:
             width = float(dim_match.group(1).replace(",", "."))
             height = float(dim_match.group(2).replace(",", "."))
             info["width"] = width
             info["height"] = height
 
-        # Check for orientation
+        # Extract orientation
         if "H°" in name_without_ext or re.search(r"[Hh](?![\w])", name_without_ext):
             info["orientation"] = "horizontal"
         elif re.search(r"[Vv](?![\w])", name_without_ext):
             info["orientation"] = "vertical"
         elif info.get("width") and info.get("height"):
-            # Infer orientation from dimensions if not explicitly specified
             if info["width"] > info["height"]:
                 info["orientation"] = "horizontal"
             elif info["width"] < info["height"]:
                 info["orientation"] = "vertical"
 
-        # Extract title by removing technical information
-        title_parts = []
-        technical_patterns = [
-            r"\d+[FMPfmp]",  # Size standards
-            dim_pattern,  # Dimensions
-            r"[Hh]°?(?![\w])",  # Horizontal marker
-            r"[Vv](?![\w])",  # Vertical marker
-        ]
+        # Extract title by cleaning up technical elements
+        title_elements = []
+        technical_markers = set(
+            [
+                info["catalog_number"],
+                material_match if material_match else "",
+                dim_match.group(0) if dim_match else "",
+            ]
+        )
 
-        # Add material indicators to technical patterns
-        technical_patterns.extend([re.escape(ind) for ind in material_indicators])
-
-        # Join all patterns
-        combined_pattern = "|".join(technical_patterns)
-
-        # Process each part for title
         for part in parts:
-            # Skip parts that are just the catalog number or empty
-            if part == info["catalog_number"] or not part.strip():
-                continue
+            if part and part not in technical_markers:
+                # Remove any remaining technical markers
+                clean_part = part
+                for marker in technical_markers:
+                    if marker:
+                        clean_part = clean_part.replace(marker, "")
+                if clean_part.strip() and not clean_part.strip().isdigit():
+                    title_elements.append(clean_part.strip())
 
-            # Remove technical markers but preserve the rest
-            cleaned_part = re.sub(combined_pattern, "", part).strip()
-            if cleaned_part and not cleaned_part.isdigit():
-                title_parts.append(cleaned_part)
-
-        # Join title parts, preserving commas
-        info["title"] = " ".join(title_parts).strip()
-        # Clean up multiple spaces and hyphens
-        info["title"] = re.sub(r"\s+", " ", info["title"])
-        info["title"] = re.sub(r"\s*-\s*", "-", info["title"])
-        info["title"] = re.sub(r"^\s*-\s*|\s*-\s*$", "", info["title"])
+        # Join title elements and clean up
+        info["title"] = " ".join(title_elements).strip()
+        # Remove any trailing technical indicators
+        info["title"] = re.sub(r"-?\s*(Ps|H|Ac|Lch)\s*$", "", info["title"])
+        info["title"] = info["title"].strip()
 
         return info
 
