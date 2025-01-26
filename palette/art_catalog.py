@@ -141,7 +141,19 @@ class ArtCatalog:
     def parse_filename(
         self, filepath: str, filename: str, default_year: Optional[int] = None
     ) -> Dict:
-        """Extract detailed information from filename"""
+        """Extract detailed information from filename
+
+        The filename generally follows this pattern:
+        reference_numbers - title - material - format
+
+        Where:
+        - reference_numbers: can contain digits, dashes, and single letters (e.g., "9061-d", "21205-4")
+        - title: the artwork title (e.g., "Famille bernache", "Coucher de soleil")
+        - material: technique indicator (e.g., "Lch", "Ps")
+        - format: dimensions or standard size (e.g., "50X50", "15F")
+
+        Elements may be missing and separators may vary.
+        """
         info = {
             "original_filename": filename,
             "year": default_year,
@@ -158,90 +170,96 @@ class ArtCatalog:
         # Remove file extension
         name_without_ext = os.path.splitext(filename)[0]
 
-        # Extract catalog number first (it's always at the start if present)
+        # First extract the reference numbers from the start
         parts = name_without_ext.split("-")
-        if parts[0].isdigit():
-            info["catalog_number"] = parts[0]
-            name_without_ext = name_without_ext[len(parts[0]) + 1 :]
 
-        # Handle cases where technical markers might be after --
-        parts = name_without_ext.split("--")
-        if len(parts) > 1:
-            # If we have multiple parts after --, assume the first part is title
-            # and concatenate the rest for technical information
-            title_part = parts[0]
-            technical_part = "-".join(parts[1:])
-            technical_elements = technical_part.split("-")
+        # Extract catalog number and sequence numbers
+        ref_parts = []
+        current_idx = 0
+        for part in parts:
+            if part.isdigit() or (len(part) == 1 and part.isalpha()):
+                ref_parts.append(part)
+                current_idx += 1
+            else:
+                break
+
+        if ref_parts:
+            info["catalog_number"] = "-".join(ref_parts)
+            # Get the rest of the string, preserving the first character of the title
+            remaining = "-".join(parts[current_idx:])
         else:
-            technical_elements = name_without_ext.split("-")
-            title_part = None
+            remaining = name_without_ext
 
-        # Detect material/technique (sort by length to match longer patterns first)
+        # Look for material indicators from the end
         material_indicators = sorted(MATERIAL_INDICATORS.keys(), key=len, reverse=True)
-        material_match = next(
-            (ind for ind in material_indicators if ind in name_without_ext), None
-        )
+        material_match = None
+        material_pos = len(remaining)
+        for ind in material_indicators:
+            pos = remaining.rfind(ind)
+            if pos != -1 and pos < material_pos:
+                material_match = ind
+                material_pos = pos
+
         if material_match:
             info["material"] = MATERIAL_INDICATORS[material_match]
+            # Extract the part before material for title
+            title_part = remaining[:material_pos].rstrip("-")
+            # And the part after for format
+            format_part = remaining[material_pos + len(material_match) :].lstrip("-")
+        else:
+            title_part = remaining
+            format_part = ""
 
-        # Detect dimensions
-        dim_match = re.search(
-            r"(\d+[.,]?\d*)[\s]*[xX][\s]*(\d+[.,]?\d*)", name_without_ext
-        )
+        # Look for dimensions in the format part
+        dim_match = re.search(r"(\d+[.,]?\d*)[\s]*[xX][\s]*(\d+[.,]?\d*)", format_part)
         if dim_match:
             width = float(dim_match.group(1).replace(",", "."))
             height = float(dim_match.group(2).replace(",", "."))
             info["width"] = width
             info["height"] = height
 
-        # Extract orientation
-        if "H°" in name_without_ext or re.search(r"[Hh](?![\w])", name_without_ext):
-            info["orientation"] = "horizontal"
-        elif re.search(r"[Vv](?![\w])", name_without_ext):
-            info["orientation"] = "vertical"
-        elif info.get("width") and info.get("height"):
-            if info["width"] > info["height"]:
+            # Set orientation based on dimensions
+            if width > height:
                 info["orientation"] = "horizontal"
-            elif info["width"] < info["height"]:
+            elif height > width:
+                info["orientation"] = "vertical"
+        else:
+            # Look for standard size format (e.g., 15F)
+            size_match = re.search(r"(\d+)([FMPfmp])", format_part)
+            if size_match:
+                info["size_standard"] = size_match.group(0)
+                info["size_type"] = size_match.group(2).upper()
+
+                # Try to get standard dimensions
+                std_dims = get_standard_size(info["size_standard"])
+                if std_dims:
+                    info["width"], info["height"] = std_dims
+
+        # Extract orientation from markers if not set by dimensions
+        if not info["orientation"]:
+            if "H°" in name_without_ext or re.search(r"[Hh](?![\w])", name_without_ext):
+                info["orientation"] = "horizontal"
+            elif re.search(r"[Vv](?![\w])", name_without_ext):
                 info["orientation"] = "vertical"
 
-        # For title, use title_part if it exists, otherwise build from parts
-        if title_part:
-            # Clean up the title part
-            title = title_part
-            # Remove dimension markers
-            title = re.sub(r"-\d+[.,]?\d*[\s]*[xX][\s]*\d+[.,]?\d*", "", title)
-            # Remove material markers
-            for ind in material_indicators:
-                title = title.replace(f"-{ind}", "")
-                title = title.replace(ind, "")
-            info["title"] = title.strip()
-        else:
-            # Build title from parts, excluding technical elements
-            title_parts = []
-            technical_markers = {
-                info["catalog_number"],
-                dim_match.group(0) if dim_match else "",
-                material_match if material_match else "",
-            }
+        # Clean up title
+        # Handle double dash case
+        if "--" in title_part:
+            # Take everything after the last sequence of numbers before --
+            parts = title_part.split("--")
+            number_parts = parts[0].split("-")
+            title_start = 0
+            for i, part in enumerate(number_parts):
+                if part.isdigit():
+                    title_start = i + 1
+            title_part = " ".join(number_parts[title_start:]) + parts[1]
 
-            for part in technical_elements:
-                if part and part not in technical_markers:
-                    # Remove any technical markers but preserve rest
-                    clean_part = part
-                    for marker in technical_markers:
-                        if marker:
-                            clean_part = clean_part.replace(marker, "")
-                    if clean_part.strip() and not clean_part.strip().isdigit():
-                        title_parts.append(clean_part.strip())
+        info["title"] = title_part.strip()
+        # Remove any trailing format indicators or dashes
+        info["title"] = re.sub(r"--$", "", info["title"])
+        info["title"] = re.sub(r"-+$", "", info["title"])
+        info["title"] = info["title"].strip()
 
-            info["title"] = " ".join(title_parts).strip()
-
-        # Final cleanup of the title
-        info["title"] = re.sub(r"\s+", " ", info["title"])  # normalize spaces
-        info["title"] = re.sub(r"-+$", "", info["title"])  # remove trailing hyphens
-        info["title"] = re.sub(r"^-+", "", info["title"])  # remove leading hyphens
-        info["title"] = info["title"].strip()  # final strip
         if not info["title"]:
             logging.error(f"Could not extract title from filename: {filepath}")
             info["title"] = filename
