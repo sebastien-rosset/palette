@@ -138,7 +138,9 @@ class ArtCatalog:
 
         return None
 
-    def parse_filename(self, filename: str, default_year: Optional[int] = None) -> Dict:
+    def parse_filename(
+        self, filepath: str, filename: str, default_year: Optional[int] = None
+    ) -> Dict:
         """Extract detailed information from filename"""
         info = {
             "original_filename": filename,
@@ -239,7 +241,8 @@ class ArtCatalog:
         info["title"] = re.sub(r"^-+", "", info["title"])  # remove leading hyphens
         info["title"] = info["title"].strip()  # final strip
         if not info["title"]:
-            raise ValueError(f"Could not extract title from filename: {filename}")
+            logging.error(f"Could not extract title from filename: {filepath}")
+            info["title"] = filename
 
         return info
 
@@ -254,7 +257,7 @@ class ArtCatalog:
 
     def find_and_catalog_images(self):
         """Recursively find and catalog images from the base path"""
-        for root, _, files in os.walk(self.base_path):
+        for root, dir, files in os.walk(self.base_path):
             for filename in files:
                 # Check if file is an image
                 if not filename.lower().endswith(self.image_extensions):
@@ -265,7 +268,7 @@ class ArtCatalog:
                 year = self.extract_contextual_year(filepath)
 
                 # Parse filename
-                file_info = self.parse_filename(filename, year)
+                file_info = self.parse_filename(filepath, filename, year)
 
                 # Generate image hash
                 image_hash = self.generate_image_hash(filepath)
