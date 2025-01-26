@@ -284,12 +284,13 @@ class ArtCatalog:
             catalog_number = "-".join(ref_parts)
             info["catalog_number"] = catalog_number
             catalog_parts = self.parse_catalog_number(catalog_number)
-            if "year" in catalog_parts:
-                info["year"] = catalog_parts["year"]
-            if "month" in catalog_parts:
-                info["month"] = catalog_parts["month"]
-            if "item_number" in catalog_parts:
-                info["item_number"] = catalog_parts["item_number"]
+            if catalog_parts:
+                if "year" in catalog_parts:
+                    info["year"] = catalog_parts["year"]
+                if "month" in catalog_parts:
+                    info["month"] = catalog_parts["month"]
+                if "item_number" in catalog_parts:
+                    info["item_number"] = catalog_parts["item_number"]
             # Get the rest of the string, preserving the first character of the title
             name_without_ext = "-".join(parts[current_idx:])
         else:
