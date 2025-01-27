@@ -39,7 +39,7 @@ def predict_image(model, image_path, transform, device):
 
     # Convert predictions to labels
     labels = {
-        "type": "artwork" if predictions["type"][1] > 0.5 else "regular",
+        "type": "artwork" if predictions["image_type"][1] > 0.5 else "regular",
         "has_signature": "yes" if predictions["has_signature"][1] > 0.5 else "no",
         "angle": "straight" if predictions["angle"][1] > 0.5 else "angled",
         "cropping": (
@@ -51,7 +51,7 @@ def predict_image(model, image_path, transform, device):
 
     # Add confidence scores
     confidences = {
-        "type": float(max(predictions["type"])),
+        "type": float(max(predictions["image_type"])),
         "has_signature": float(max(predictions["has_signature"])),
         "angle": float(max(predictions["angle"])),
         "cropping": float(max(predictions["cropping"])),
@@ -67,7 +67,7 @@ def main():
     parser.add_argument(
         "--input-csv",
         type=str,
-        default="art_catalog.csv",
+        required=True,
         help="Path to input CSV file with image paths",
     )
     parser.add_argument(

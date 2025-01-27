@@ -35,7 +35,7 @@ class ArtDataset(Dataset):
 
         # Prepare labels
         labels = {
-            "type": (
+            "image_type": (
                 1 if row["type"] == "artwork" else 0 if row["type"] == "regular" else -1
             ),
             "has_signature": (
@@ -72,7 +72,7 @@ class ArtClassifier(nn.Module):
         # Create separate heads for each task
         self.heads = nn.ModuleDict(
             {
-                "type": nn.Linear(feature_dim, num_classes_dict["type"]),
+                "image_type": nn.Linear(feature_dim, num_classes_dict["image_type"]),
                 "has_signature": nn.Linear(
                     feature_dim, num_classes_dict["has_signature"]
                 ),
@@ -185,7 +185,7 @@ def main():
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
     # Set up model
-    num_classes_dict = {"type": 2, "has_signature": 2, "angle": 2, "cropping": 2}
+    num_classes_dict = {"image_type": 2, "has_signature": 2, "angle": 2, "cropping": 2}
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = ArtClassifier(num_classes_dict).to(device)
