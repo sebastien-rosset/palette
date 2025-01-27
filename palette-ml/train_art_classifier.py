@@ -14,6 +14,7 @@ from PIL import Image
 import json
 from sklearn.model_selection import train_test_split
 import ast
+import torchvision.ops as ops
 
 
 class ArtDataset(Dataset):
@@ -30,6 +31,8 @@ class ArtDataset(Dataset):
 
         # Load and transform image
         image = Image.open(image_path).convert("RGB")
+        original_size = image.size  # Store original size for bbox scaling
+
         if self.transform:
             image = self.transform(image)
 
@@ -54,6 +57,38 @@ class ArtDataset(Dataset):
                 else 0 if row["cropping"] == "includes_surroundings" else -1
             ),
         }
+
+        # Handle signature bounding boxes
+        if "signature_boxes" in row and row["signature_boxes"] != "[]":
+            try:
+                # Parse bounding boxes from string format
+                boxes = ast.literal_eval(row["signature_boxes"])
+                if boxes and isinstance(boxes, list):
+                    # Scale boxes to normalized coordinates (0-1)
+                    scaled_boxes = []
+                    for box in boxes:
+                        x1, y1, x2, y2 = box
+                        scaled_boxes.append(
+                            [
+                                x1 / original_size[0],
+                                y1 / original_size[1],
+                                x2 / original_size[0],
+                                y2 / original_size[1],
+                            ]
+                        )
+                    labels["signature_boxes"] = torch.tensor(
+                        scaled_boxes, dtype=torch.float32
+                    )
+                    labels["num_signatures"] = len(scaled_boxes)
+                else:
+                    labels["signature_boxes"] = torch.zeros((0, 4), dtype=torch.float32)
+                    labels["num_signatures"] = 0
+            except (ValueError, SyntaxError):
+                labels["signature_boxes"] = torch.zeros((0, 4), dtype=torch.float32)
+                labels["num_signatures"] = 0
+        else:
+            labels["signature_boxes"] = torch.zeros((0, 4), dtype=torch.float32)
+            labels["num_signatures"] = 0
 
         return image, labels
 
@@ -81,9 +116,33 @@ class ArtClassifier(nn.Module):
             }
         )
 
+        # Add signature detection head
+        self.signature_detector = nn.Sequential(
+            nn.Linear(feature_dim, 256),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(256, 4),  # x1, y1, x2, y2
+            nn.Sigmoid(),  # Normalize coordinates to [0, 1]
+        )
+
     def forward(self, x):
         features = self.backbone(x)
-        return {task: head(features) for task, head in self.heads.items()}
+        outputs = {task: head(features) for task, head in self.heads.items()}
+
+        # Add signature detection output
+        outputs["signature_boxes"] = self.signature_detector(features)
+
+        return outputs
+
+
+def compute_box_loss(pred_boxes, true_boxes):
+    """Compute loss for bounding box prediction"""
+    if len(true_boxes) == 0:
+        return torch.tensor(0.0).to(pred_boxes.device)
+
+    # Use GIoU loss for better bounding box regression
+    loss = ops.generalized_box_iou_loss(pred_boxes, true_boxes, reduction="mean")
+    return loss
 
 
 def train_model(train_loader, val_loader, model, device, num_epochs=15):
@@ -104,7 +163,19 @@ def train_model(train_loader, val_loader, model, device, num_epochs=15):
             optimizer.zero_grad()
             outputs = model(images)
 
-            loss = sum(criterion(outputs[k], batch_labels[k]) for k in outputs.keys())
+            # Compute classification losses
+            class_loss = sum(
+                criterion(outputs[k], batch_labels[k])
+                for k in ["image_type", "has_signature", "angle", "cropping"]
+            )
+
+            # Compute box loss only for images with signatures
+            box_loss = compute_box_loss(
+                outputs["signature_boxes"], batch_labels["signature_boxes"]
+            )
+
+            # Combined loss
+            loss = class_loss + box_loss
             loss.backward()
             optimizer.step()
 
@@ -119,9 +190,16 @@ def train_model(train_loader, val_loader, model, device, num_epochs=15):
                 batch_labels = {k: v.to(device) for k, v in labels.items()}
 
                 outputs = model(images)
-                loss = sum(
-                    criterion(outputs[k], batch_labels[k]) for k in outputs.keys()
+
+                # Compute losses
+                class_loss = sum(
+                    criterion(outputs[k], batch_labels[k])
+                    for k in ["image_type", "has_signature", "angle", "cropping"]
                 )
+                box_loss = compute_box_loss(
+                    outputs["signature_boxes"], batch_labels["signature_boxes"]
+                )
+                loss = class_loss + box_loss
                 val_loss += loss.item()
 
         # Save best model

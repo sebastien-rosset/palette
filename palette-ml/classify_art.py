@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
 import logging
 import pandas as pd
 import torch
@@ -27,6 +28,7 @@ def load_model(model_path, device):
 def predict_image(model, image_path, transform, device):
     # Load and transform image
     image = Image.open(image_path).convert("RGB")
+    original_size = image.size  # Store original size for bbox scaling
     image_tensor = transform(image).unsqueeze(0).to(device)
 
     # Get predictions
@@ -35,7 +37,22 @@ def predict_image(model, image_path, transform, device):
         predictions = {
             task: torch.softmax(output, dim=1).cpu().numpy()[0]
             for task, output in outputs.items()
+            if task != "signature_boxes"  # Exclude signature boxes from softmax
         }
+        # Get and process signature box predictions
+        signature_boxes = outputs["signature_boxes"].cpu().numpy()[0]
+
+        # Scale boxes back to original image size
+        scaled_boxes = []
+        if signature_boxes.size > 0:
+            scaled_boxes = [
+                [
+                    int(signature_boxes[0] * original_size[0]),  # x1
+                    int(signature_boxes[1] * original_size[1]),  # y1
+                    int(signature_boxes[2] * original_size[0]),  # x2
+                    int(signature_boxes[3] * original_size[1]),  # y2
+                ]
+            ]
 
     # Convert predictions to labels
     labels = {
@@ -57,7 +74,7 @@ def predict_image(model, image_path, transform, device):
         "cropping": float(max(predictions["cropping"])),
     }
 
-    return labels, confidences
+    return labels, confidences, scaled_boxes
 
 
 def main():
@@ -134,7 +151,7 @@ def main():
 
             try:
                 # Get predictions
-                labels, confidences = predict_image(
+                labels, confidences, scaled_boxes = predict_image(
                     model, image_path, transform, device
                 )
 
@@ -151,7 +168,7 @@ def main():
                             "has_signature": labels["has_signature"],
                             "angle": labels["angle"],
                             "cropping": labels["cropping"],
-                            "signature_boxes": "[]",  # Signature box detection not implemented yet
+                            "signature_boxes": json.dumps(scaled_boxes),
                             "confidence": overall_confidence,
                         }
                     )
