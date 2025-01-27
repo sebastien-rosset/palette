@@ -6,10 +6,9 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 import csv
-import json
 import os
 import pandas as pd
-from enum import Enum, auto
+from enum import Enum
 
 
 class PhotoType(Enum):
@@ -31,20 +30,32 @@ class CroppingQuality(Enum):
 
 
 class ImageLabeler:
-    def __init__(self, csv_path):
+    def __init__(self, input_csv, output_csv):
         self.root = tk.Tk()
         self.root.title("Artwork Labeler")
 
-        # Load CSV data
-        self.df = pd.read_csv(csv_path)
+        # Load input CSV data
+        self.df = pd.read_csv(input_csv)
         self.current_index = 0
-        self.labels = {}
+        self.output_csv = output_csv
 
-        # Load existing labels if any
-        self.labels_file = "image_labels.json"
-        if os.path.exists(self.labels_file):
-            with open(self.labels_file, "r") as f:
-                self.labels = json.load(f)
+        # Load or create output CSV
+        self.processed_files = set()
+        if os.path.exists(output_csv):
+            with open(output_csv, "r") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    self.processed_files.add(row["Path"])
+        else:
+            # Create output CSV with headers
+            self.write_csv_headers()
+
+        # Skip to first unprocessed image
+        while (
+            self.current_index < len(self.df)
+            and self.df.iloc[self.current_index]["Path"] in self.processed_files
+        ):
+            self.current_index += 1
 
         # Create main container
         self.main_container = ttk.Frame(self.root)
@@ -70,6 +81,20 @@ class ImageLabeler:
 
         # Start the main loop
         self.root.mainloop()
+
+    def write_csv_headers(self):
+        headers = [
+            "Path",
+            "type",
+            "material",
+            "has_signature",
+            "angle",
+            "cropping",
+            "signature_boxes",
+        ]
+        with open(self.output_csv, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=headers)
+            writer.writeheader()
 
     def setup_controls(self):
         # Image type selection
@@ -111,10 +136,12 @@ class ImageLabeler:
         ttk.Button(self.controls, text="Previous (←)", command=self.prev_image).pack(
             pady=5
         )
-        ttk.Button(self.controls, text="Next (→)", command=self.next_image).pack(pady=5)
-        ttk.Button(self.controls, text="Save (s)", command=self.save_labels).pack(
-            pady=5
-        )
+        ttk.Button(self.controls, text="NEXT (→)", command=self.next_image).pack(pady=5)
+
+        # Progress indicator
+        self.progress_var = tk.StringVar()
+        self.update_progress_indicator()
+        ttk.Label(self.controls, textvariable=self.progress_var).pack(pady=5)
 
         # Instructions
         instructions = """
@@ -125,10 +152,14 @@ class ImageLabeler:
         5/6 - Set cropping quality
         Click and drag - Draw signature box
         r - Reset signature boxes
-        s - Save labels
         ←/→ - Navigate images
         """
         ttk.Label(self.controls, text=instructions).pack(anchor="w", pady=20)
+
+    def update_progress_indicator(self):
+        total = len(self.df)
+        processed = len(self.processed_files)
+        self.progress_var.set(f"Progress: {processed}/{total} images processed")
 
     def setup_bindings(self):
         self.root.bind("<Key>", self.handle_key)
@@ -156,8 +187,6 @@ class ImageLabeler:
             self.cropping_var.set(CroppingQuality.INCLUDES_SURROUNDINGS.value)
         elif key == "r":
             self.reset_signature_boxes()
-        elif key == "s":
-            self.save_labels()
         elif event.keysym == "Left":
             self.prev_image()
         elif event.keysym == "Right":
@@ -168,11 +197,16 @@ class ImageLabeler:
             row = self.df.iloc[self.current_index]
             image_path = row["Path"]
 
+            # Check if image was already processed
+            if image_path in self.processed_files:
+                self.next_image()
+                return
+
             # Load and display image
             try:
                 image = Image.open(image_path)
                 # Resize image to fit canvas while maintaining aspect ratio
-                display_size = (800, 600)  # Adjust as needed
+                display_size = (800, 600)
                 image.thumbnail(display_size, Image.Resampling.LANCZOS)
                 self.photo = ImageTk.PhotoImage(image)
                 self.canvas.config(width=image.width, height=image.height)
@@ -182,42 +216,48 @@ class ImageLabeler:
                 self.image_width = image.width
                 self.image_height = image.height
 
-                # Load existing labels if any
-                self.load_current_labels()
+                # Reset current labels
+                self.reset_labels()
 
             except Exception as e:
-                print(f"Error loading image {image_path}: {e}")
+                logging.error(f"Error loading image {image_path}: {e}")
+                self.next_image()
 
-    def load_current_labels(self):
-        image_path = self.df.iloc[self.current_index]["Path"]
-        if image_path in self.labels:
-            label_data = self.labels[image_path]
-            self.image_type_var.set(label_data.get("type", PhotoType.UNKNOWN.value))
-            self.material_var.set(label_data.get("material", ""))
-            self.signature_var.set(label_data.get("has_signature", "unknown"))
-            self.angle_var.set(label_data.get("angle", PhotoAngle.UNKNOWN.value))
-            self.cropping_var.set(
-                label_data.get("cropping", CroppingQuality.UNKNOWN.value)
-            )
+    def reset_labels(self):
+        self.image_type_var.set(PhotoType.UNKNOWN.value)
+        self.material_var.set("")
+        self.signature_var.set("unknown")
+        self.angle_var.set(PhotoAngle.UNKNOWN.value)
+        self.cropping_var.set(CroppingQuality.UNKNOWN.value)
+        self.reset_signature_boxes()
 
-            # Restore signature boxes
-            self.current_boxes = label_data.get("signature_boxes", [])
-            self.redraw_signature_boxes()
+    def save_current_labels(self):
+        if 0 <= self.current_index < len(self.df):
+            image_path = self.df.iloc[self.current_index]["Path"]
 
-    def save_labels(self):
-        image_path = self.df.iloc[self.current_index]["Path"]
-        self.labels[image_path] = {
-            "type": self.image_type_var.get(),
-            "material": self.material_var.get(),
-            "has_signature": self.signature_var.get(),
-            "angle": self.angle_var.get(),
-            "cropping": self.cropping_var.get(),
-            "signature_boxes": self.current_boxes,
-        }
+            # Skip if already processed
+            if image_path in self.processed_files:
+                return
 
-        with open(self.labels_file, "w") as f:
-            json.dump(self.labels, f, indent=2)
-        print(f"Labels saved for {image_path}")
+            # Prepare row data
+            row_data = {
+                "Path": image_path,
+                "type": self.image_type_var.get(),
+                "material": self.material_var.get(),
+                "has_signature": self.signature_var.get(),
+                "angle": self.angle_var.get(),
+                "cropping": self.cropping_var.get(),
+                "signature_boxes": str(self.current_boxes),
+            }
+
+            # Append to CSV
+            with open(self.output_csv, "a", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=row_data.keys())
+                writer.writerow(row_data)
+
+            # Mark as processed
+            self.processed_files.add(image_path)
+            self.update_progress_indicator()
 
     def start_rect(self, event):
         self.start_x = self.canvas.canvasx(event.x)
@@ -245,46 +285,39 @@ class ImageLabeler:
         self.current_boxes.append(box)
         self.rect_id = None
 
-    def redraw_signature_boxes(self):
-        self.canvas.delete("signature_box")
-        for box in self.current_boxes:
-            self.canvas.create_rectangle(
-                box["x1"] * self.image_width,
-                box["y1"] * self.image_height,
-                box["x2"] * self.image_width,
-                box["y2"] * self.image_height,
-                outline="red",
-                width=2,
-                tags="signature_box",
-            )
-
     def reset_signature_boxes(self):
         self.current_boxes = []
         self.canvas.delete("signature_box")
 
     def prev_image(self):
         if self.current_index > 0:
-            self.save_labels()
             self.current_index -= 1
             self.load_current_image()
 
     def next_image(self):
         if self.current_index < len(self.df) - 1:
-            self.save_labels()
+            # Save current labels before moving to next image
+            self.save_current_labels()
+
+            # Move to next unprocessed image
             self.current_index += 1
+            while (
+                self.current_index < len(self.df)
+                and self.df.iloc[self.current_index]["Path"] in self.processed_files
+            ):
+                self.current_index += 1
+
             self.load_current_image()
 
 
 def setup_logging(log_level=logging.INFO, log_file=None):
     """Configure logging with optional file output"""
-    # Configure base logger
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler()],  # Console output
+        handlers=[logging.StreamHandler()],
     )
 
-    # Add file handler if log_file is specified
     if log_file:
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(
@@ -294,12 +327,11 @@ def setup_logging(log_level=logging.INFO, log_file=None):
 
 
 def main():
-    # Set up command-line argument parsing
     parser = argparse.ArgumentParser(description="Catalog art images in a directory")
     parser.add_argument(
         "--csv",
         type=str,
-        help="Path to CSV file with image data",
+        help="Path to input CSV file with image data",
         default="art_catalog.csv",
     )
     parser.add_argument(
@@ -316,12 +348,12 @@ def main():
         default="INFO",
         help="Logging level (default: INFO)",
     )
-    # Parse arguments
+
     args = parser.parse_args()
     log_level = getattr(logging, args.log_level)
     setup_logging(log_level=log_level, log_file=args.log)
 
-    labeler = ImageLabeler(args.csv)
+    labeler = ImageLabeler(args.csv, args.output)
 
 
 if __name__ == "__main__":
