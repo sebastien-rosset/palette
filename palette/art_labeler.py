@@ -76,7 +76,6 @@ class ImageLabeler:
         self.current_boxes = []
 
         self.setup_controls()
-        self.setup_bindings()
         self.load_current_image()
 
         # Start the main loop
@@ -97,100 +96,144 @@ class ImageLabeler:
             writer.writeheader()
 
     def setup_controls(self):
-        # Image type selection
-        ttk.Label(self.controls, text="Image Type (1-regular, 2-artwork):").pack(
-            anchor="w"
+        # Create a frame for each group of controls
+        image_type_frame = ttk.LabelFrame(
+            self.controls, text="Image Type", padding="5 5 5 5"
         )
-        self.image_type_var = tk.StringVar(value=PhotoType.UNKNOWN.value)
-        ttk.Label(self.controls, textvariable=self.image_type_var).pack(anchor="w")
+        image_type_frame.pack(fill="x", padx=5, pady=5)
+
+        # Image type radio buttons
+        self.image_type_var = tk.StringVar(value="")
+        ttk.Radiobutton(
+            image_type_frame,
+            text="Regular",
+            value="regular",
+            variable=self.image_type_var,
+        ).pack(anchor="w")
+        ttk.Radiobutton(
+            image_type_frame,
+            text="Artwork",
+            value="artwork",
+            variable=self.image_type_var,
+        ).pack(anchor="w")
+        ttk.Button(
+            image_type_frame, text="Reset", command=lambda: self.image_type_var.set("")
+        ).pack(anchor="w")
 
         # Material selection
-        ttk.Label(self.controls, text="Material:").pack(anchor="w")
-        self.material_var = tk.StringVar()
-        materials = ["", "Huile", "Pastel", "Technique mixte", "Lavis", "Acrylique"]
-        self.material_combo = ttk.Combobox(
-            self.controls, textvariable=self.material_var, values=materials
+        material_frame = ttk.LabelFrame(
+            self.controls, text="Material", padding="5 5 5 5"
         )
-        self.material_combo.pack(anchor="w")
+        material_frame.pack(fill="x", padx=5, pady=5)
+
+        self.material_var = tk.StringVar()
+        materials = ["Huile", "Pastel", "Technique mixte", "Lavis", "Acrylique"]
+        for material in materials:
+            ttk.Radiobutton(
+                material_frame,
+                text=material,
+                value=material,
+                variable=self.material_var,
+            ).pack(anchor="w")
+        ttk.Button(
+            material_frame, text="Reset", command=lambda: self.material_var.set("")
+        ).pack(anchor="w")
 
         # Signature presence
-        ttk.Label(self.controls, text="Signature (y/n):").pack(anchor="w")
-        self.signature_var = tk.StringVar(value="unknown")
-        ttk.Label(self.controls, textvariable=self.signature_var).pack(anchor="w")
+        signature_frame = ttk.LabelFrame(
+            self.controls, text="Signature", padding="5 5 5 5"
+        )
+        signature_frame.pack(fill="x", padx=5, pady=5)
+
+        self.signature_var = tk.StringVar(value="")
+        ttk.Radiobutton(
+            signature_frame, text="Yes", value="yes", variable=self.signature_var
+        ).pack(anchor="w")
+        ttk.Radiobutton(
+            signature_frame, text="No", value="no", variable=self.signature_var
+        ).pack(anchor="w")
+        ttk.Button(
+            signature_frame, text="Reset", command=lambda: self.signature_var.set("")
+        ).pack(anchor="w")
 
         # Photo angle
-        ttk.Label(self.controls, text="Photo Angle (3-straight, 4-angled):").pack(
-            anchor="w"
+        angle_frame = ttk.LabelFrame(
+            self.controls, text="Photo Angle", padding="5 5 5 5"
         )
-        self.angle_var = tk.StringVar(value=PhotoAngle.UNKNOWN.value)
-        ttk.Label(self.controls, textvariable=self.angle_var).pack(anchor="w")
+        angle_frame.pack(fill="x", padx=5, pady=5)
+
+        self.angle_var = tk.StringVar(value="")
+        ttk.Radiobutton(
+            angle_frame, text="Straight", value="straight", variable=self.angle_var
+        ).pack(anchor="w")
+        ttk.Radiobutton(
+            angle_frame, text="Angled", value="angled", variable=self.angle_var
+        ).pack(anchor="w")
+        ttk.Button(
+            angle_frame, text="Reset", command=lambda: self.angle_var.set("")
+        ).pack(anchor="w")
 
         # Cropping quality
-        ttk.Label(
-            self.controls, text="Cropping (5-well, 6-includes surroundings):"
+        cropping_frame = ttk.LabelFrame(
+            self.controls, text="Cropping", padding="5 5 5 5"
+        )
+        cropping_frame.pack(fill="x", padx=5, pady=5)
+
+        self.cropping_var = tk.StringVar(value="")
+        ttk.Radiobutton(
+            cropping_frame,
+            text="Well Cropped",
+            value="well_cropped",
+            variable=self.cropping_var,
         ).pack(anchor="w")
-        self.cropping_var = tk.StringVar(value=CroppingQuality.UNKNOWN.value)
-        ttk.Label(self.controls, textvariable=self.cropping_var).pack(anchor="w")
+        ttk.Radiobutton(
+            cropping_frame,
+            text="Includes Surroundings",
+            value="includes_surroundings",
+            variable=self.cropping_var,
+        ).pack(anchor="w")
+        ttk.Button(
+            cropping_frame, text="Reset", command=lambda: self.cropping_var.set("")
+        ).pack(anchor="w")
+
+        # Signature box controls
+        signature_box_frame = ttk.LabelFrame(
+            self.controls, text="Signature Box", padding="5 5 5 5"
+        )
+        signature_box_frame.pack(fill="x", padx=5, pady=5)
+
+        ttk.Label(
+            signature_box_frame, text="Click and drag on image to draw signature box"
+        ).pack(anchor="w")
+        ttk.Button(
+            signature_box_frame, text="Reset Boxes", command=self.reset_signature_boxes
+        ).pack(anchor="w")
 
         # Navigation buttons
-        ttk.Button(self.controls, text="Previous (←)", command=self.prev_image).pack(
-            pady=5
+        nav_frame = ttk.Frame(self.controls)
+        nav_frame.pack(fill="x", padx=5, pady=15)
+
+        ttk.Button(nav_frame, text="← Previous", command=self.prev_image).pack(
+            side="left", padx=5
         )
-        ttk.Button(self.controls, text="NEXT (→)", command=self.next_image).pack(pady=5)
+        ttk.Button(nav_frame, text="NEXT →", command=self.next_image).pack(
+            side="right", padx=5
+        )
 
         # Progress indicator
         self.progress_var = tk.StringVar()
         self.update_progress_indicator()
         ttk.Label(self.controls, textvariable=self.progress_var).pack(pady=5)
 
-        # Instructions
-        instructions = """
-        Instructions:
-        1/2 - Set image type
-        y/n - Toggle signature
-        3/4 - Set photo angle
-        5/6 - Set cropping quality
-        Click and drag - Draw signature box
-        r - Reset signature boxes
-        ←/→ - Navigate images
-        """
-        ttk.Label(self.controls, text=instructions).pack(anchor="w", pady=20)
+        # Canvas bindings for signature box
+        self.canvas.bind("<ButtonPress-1>", self.start_rect)
+        self.canvas.bind("<B1-Motion>", self.draw_rect)
+        self.canvas.bind("<ButtonRelease-1>", self.end_rect)
 
     def update_progress_indicator(self):
         total = len(self.df)
         processed = len(self.processed_files)
         self.progress_var.set(f"Progress: {processed}/{total} images processed")
-
-    def setup_bindings(self):
-        self.root.bind("<Key>", self.handle_key)
-        self.canvas.bind("<ButtonPress-1>", self.start_rect)
-        self.canvas.bind("<B1-Motion>", self.draw_rect)
-        self.canvas.bind("<ButtonRelease-1>", self.end_rect)
-
-    def handle_key(self, event):
-        key = event.char.lower()
-        if key == "1":
-            self.image_type_var.set(PhotoType.REGULAR.value)
-        elif key == "2":
-            self.image_type_var.set(PhotoType.ARTWORK.value)
-        elif key == "y":
-            self.signature_var.set("yes")
-        elif key == "n":
-            self.signature_var.set("no")
-        elif key == "3":
-            self.angle_var.set(PhotoAngle.STRAIGHT.value)
-        elif key == "4":
-            self.angle_var.set(PhotoAngle.ANGLED.value)
-        elif key == "5":
-            self.cropping_var.set(CroppingQuality.WELL_CROPPED.value)
-        elif key == "6":
-            self.cropping_var.set(CroppingQuality.INCLUDES_SURROUNDINGS.value)
-        elif key == "r":
-            self.reset_signature_boxes()
-        elif event.keysym == "Left":
-            self.prev_image()
-        elif event.keysym == "Right":
-            self.next_image()
 
     def load_current_image(self):
         if 0 <= self.current_index < len(self.df):
@@ -224,11 +267,11 @@ class ImageLabeler:
                 self.next_image()
 
     def reset_labels(self):
-        self.image_type_var.set(PhotoType.UNKNOWN.value)
+        self.image_type_var.set("")
         self.material_var.set("")
-        self.signature_var.set("unknown")
-        self.angle_var.set(PhotoAngle.UNKNOWN.value)
-        self.cropping_var.set(CroppingQuality.UNKNOWN.value)
+        self.signature_var.set("")
+        self.angle_var.set("")
+        self.cropping_var.set("")
         self.reset_signature_boxes()
 
     def save_current_labels(self):
