@@ -447,7 +447,9 @@ class ImageLabeler:
         # First try to find next unprocessed image in current directory
         next_idx = self.find_next_unprocessed_in_directory(current_dir)
 
-        logging.info(f"Processing image {self.current_index+1}/{len(self.df)}. Current directory: {current_dir}. Next idx: {next_idx}")
+        logging.info(
+            f"Processing image {self.current_index+1}/{len(self.df)}. Current directory: {current_dir}. Next idx: {next_idx}"
+        )
 
         if next_idx is None:
             # If no more unprocessed images in current directory, find next directory
@@ -503,7 +505,20 @@ class ImageLabeler:
         if dir_path not in dir_groups:
             return None
 
-        for idx in dir_groups[dir_path]:
+        # Get all indices in this directory
+        dir_indices = dir_groups[dir_path]
+
+        # Find where we are in this directory's list
+        try:
+            current_position = dir_indices.index(self.current_index)
+            # Start searching from the next position
+            dir_indices = dir_indices[current_position + 1 :]
+        except ValueError:
+            # If current index not found, search all indices
+            pass
+
+        # Look for next unprocessed image
+        for idx in dir_indices:
             if self.df.iloc[idx]["Path"] not in self.processed_files:
                 return idx
 
