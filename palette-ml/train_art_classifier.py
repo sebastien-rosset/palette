@@ -154,7 +154,7 @@ def main():
         "--batch-size", type=int, default=32, help="Batch size for training"
     )
     parser.add_argument(
-        "--epochs", type=int, default=10, help="Number of epochs to train"
+        "--epochs", type=int, default=15, help="Number of epochs to train"
     )
     args = parser.parse_args()
 
