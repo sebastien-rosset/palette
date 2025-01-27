@@ -325,12 +325,29 @@ class ImageLabeler:
         self.cropping_var.set("")
         self.reset_signature_boxes()
 
+    def has_labels_to_save(self):
+        """Check if any attributes have been set"""
+        return any(
+            [
+                self.image_type_var.get() != "",
+                self.material_var.get() != "",
+                self.signature_var.get() != "",
+                self.angle_var.get() != "",
+                self.cropping_var.get() != "",
+                len(self.current_boxes) > 0,
+            ]
+        )
+
     def save_current_labels(self):
         if 0 <= self.current_index < len(self.df):
             image_path = self.df.iloc[self.current_index]["Path"]
 
             # Skip if already processed
             if image_path in self.processed_files:
+                return
+
+            # Skip if no attributes were set
+            if not self.has_labels_to_save():
                 return
 
             # Prepare row data
@@ -352,6 +369,14 @@ class ImageLabeler:
             # Mark as processed
             self.processed_files.add(image_path)
             self.update_progress_indicator()
+
+    def update_progress_indicator(self):
+        total = len(self.df)
+        processed = len(self.processed_files)
+        current_dir = os.path.dirname(self.df.iloc[self.current_index]["Path"])
+        self.progress_var.set(
+            f"Directory: {current_dir}\nProgress: {processed}/{total} images processed"
+        )
 
     def start_rect(self, event):
         self.start_x = self.canvas.canvasx(event.x)
@@ -389,19 +414,77 @@ class ImageLabeler:
             self.load_current_image()
 
     def next_image(self):
-        if self.current_index < len(self.df) - 1:
-            # Save current labels before moving to next image
-            self.save_current_labels()
+        """Navigate to next image using directory-based approach"""
+        if self.current_index >= len(self.df) - 1:
+            return
 
-            # Move to next unprocessed image
-            self.current_index += 1
-            while (
-                self.current_index < len(self.df)
-                and self.df.iloc[self.current_index]["Path"] in self.processed_files
-            ):
-                self.current_index += 1
+        # Try to save current labels if they exist
+        self.save_current_labels()
 
+        current_dir = os.path.dirname(self.df.iloc[self.current_index]["Path"])
+
+        # First try to find next unprocessed image in current directory
+        next_idx = self.find_next_unprocessed_in_directory(current_dir)
+
+        if next_idx is None:
+            # If no more unprocessed images in current directory, find next directory
+            next_dir = self.find_next_unprocessed_directory()
+            if next_dir is not None:
+                next_idx = self.find_next_unprocessed_in_directory(next_dir)
+
+        if next_idx is not None:
+            self.current_index = next_idx
             self.load_current_image()
+
+    def get_directory_groups(self):
+        """Group files by their parent directory"""
+        dir_groups = {}
+        for idx, row in self.df.iterrows():
+            dir_path = os.path.dirname(row["Path"])
+            if dir_path not in dir_groups:
+                dir_groups[dir_path] = []
+            dir_groups[dir_path].append(idx)
+        return dir_groups
+
+    def find_next_unprocessed_directory(self):
+        """Find next directory with unprocessed images"""
+        dir_groups = self.get_directory_groups()
+        current_dir = os.path.dirname(self.df.iloc[self.current_index]["Path"])
+
+        # Get list of directories
+        dirs = list(dir_groups.keys())
+        if not dirs:
+            return None
+
+        # Find current directory index
+        try:
+            current_dir_idx = dirs.index(current_dir)
+        except ValueError:
+            current_dir_idx = -1
+
+        # Check each directory starting from the next one
+        for i in range(len(dirs)):
+            check_idx = (current_dir_idx + 1 + i) % len(dirs)
+            dir_path = dirs[check_idx]
+
+            # Check if directory has any unprocessed images
+            for idx in dir_groups[dir_path]:
+                if self.df.iloc[idx]["Path"] not in self.processed_files:
+                    return dir_path
+
+        return None
+
+    def find_next_unprocessed_in_directory(self, dir_path):
+        """Find next unprocessed image in specified directory"""
+        dir_groups = self.get_directory_groups()
+        if dir_path not in dir_groups:
+            return None
+
+        for idx in dir_groups[dir_path]:
+            if self.df.iloc[idx]["Path"] not in self.processed_files:
+                return idx
+
+        return None
 
 
 def setup_logging(log_level=logging.INFO, log_file=None):
