@@ -161,7 +161,8 @@ class ArtClassifier(nn.Module):
         features = self.backbone(x)
         outputs = {task: head(features) for task, head in self.heads.items()}
 
-        # Add signature detection output
+        # Add signature detection output for each image in batch
+        # This will give us [batch_size, 4] output shape
         outputs["signature_boxes"] = self.signature_detector(features)
 
         return outputs
@@ -169,22 +170,37 @@ class ArtClassifier(nn.Module):
 
 def compute_box_loss(pred_boxes, true_boxes):
     """Compute loss for bounding box prediction"""
-    if true_boxes.size(1) == 0:  # No boxes in batch
+    if true_boxes.size(1) == 0:
         return torch.tensor(0.0).to(pred_boxes.device)
 
-    # Compute loss only for valid boxes (non-zero)
-    valid_mask = (true_boxes.sum(dim=-1) != 0).float()  # [batch_size, max_boxes]
+    # Add numerical stability clamps
+    pred_boxes = torch.clamp(pred_boxes, 0, 1)  # Ensure predictions are in [0,1]
 
-    # Reshape predictions to match true boxes shape
+    # Expand pred_boxes to match true_boxes shape
     pred_boxes = pred_boxes.unsqueeze(1).expand(-1, true_boxes.size(1), -1)
 
-    # Compute GIoU loss
+    # Compute valid mask (non-zero boxes)
+    valid_mask = (true_boxes.sum(dim=-1) != 0).float()
+
+    # Skip computation if no valid boxes
+    if valid_mask.sum() == 0:
+        return torch.tensor(0.0).to(pred_boxes.device)
+
+    # Reshape tensors for loss computation
+    pred_boxes_flat = pred_boxes.reshape(-1, 4)
+    true_boxes_flat = true_boxes.reshape(-1, 4)
+
+    # Add small epsilon to prevent division by zero
     loss = ops.generalized_box_iou_loss(
-        pred_boxes.view(-1, 4), true_boxes.view(-1, 4), reduction="none"
+        pred_boxes_flat, true_boxes_flat, reduction="none"
     )
 
-    # Apply valid mask and average
-    loss = (loss.view(valid_mask.shape) * valid_mask).sum() / (valid_mask.sum() + 1e-6)
+    # Clamp extreme values
+    loss = torch.clamp(loss, -100, 100)
+
+    # Reshape loss back to batch shape and apply valid mask
+    loss = loss.reshape(valid_mask.shape)
+    loss = (loss * valid_mask).sum() / (valid_mask.sum() + 1e-6)
 
     return loss
 
@@ -193,11 +209,13 @@ def train_model(train_loader, val_loader, model, device, num_epochs=15):
     criterion = nn.CrossEntropyLoss(ignore_index=-1)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
+    # Add gradient clipping
+    max_grad_norm = 1.0
+
     best_val_loss = float("inf")
     best_model_state = None
 
     for epoch in range(num_epochs):
-        # Training phase
         model.train()
         train_loss = 0
         for images, labels in train_loader:
@@ -207,20 +225,22 @@ def train_model(train_loader, val_loader, model, device, num_epochs=15):
             optimizer.zero_grad()
             outputs = model(images)
 
-            # Compute classification losses
             class_loss = sum(
                 criterion(outputs[k], batch_labels[k])
                 for k in ["image_type", "has_signature", "angle", "cropping"]
             )
-
-            # Compute box loss only for images with signatures
             box_loss = compute_box_loss(
                 outputs["signature_boxes"], batch_labels["signature_boxes"]
             )
 
-            # Combined loss
-            loss = class_loss + box_loss
+            # Weight the box loss to prevent domination
+            loss = class_loss + 0.1 * box_loss  # Reduce the impact of box loss
+
             loss.backward()
+
+            # Clip gradients
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+
             optimizer.step()
 
             train_loss += loss.item()
