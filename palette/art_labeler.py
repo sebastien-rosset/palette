@@ -33,7 +33,7 @@ class ImageLabeler:
     def __init__(self, input_csv, output_csv):
         self.root = tk.Tk()
         self.root.title("Artwork Labeler")
-
+        self.current_image_modified = False
         self.catalog_number_var = tk.StringVar()
         # Load input CSV data
         self.df = pd.read_csv(input_csv)
@@ -85,6 +85,10 @@ class ImageLabeler:
 
         # Start the main loop
         self.root.mainloop()
+
+    def mark_as_modified(self, *args):
+        """Callback for when any control value changes"""
+        self.current_image_modified = True
 
     def write_csv_headers(self):
         headers = [
@@ -231,6 +235,12 @@ class ImageLabeler:
             cropping_frame, text="Reset", command=lambda: self.cropping_var.set("")
         ).pack(anchor="w")
 
+        self.image_type_var.trace_add("write", self.mark_as_modified)
+        self.material_var.trace_add("write", self.mark_as_modified)
+        self.signature_var.trace_add("write", self.mark_as_modified)
+        self.angle_var.trace_add("write", self.mark_as_modified)
+        self.cropping_var.trace_add("write", self.mark_as_modified)
+
         # Signature box controls
         signature_box_frame = ttk.LabelFrame(
             self.controls, text="Signature Box", padding="5 5 5 5"
@@ -312,6 +322,7 @@ class ImageLabeler:
 
                 # Reset current labels
                 self.reset_labels()
+                self.current_image_modified = False
 
             except Exception as e:
                 logging.error(f"Error loading image {image_path}: {e}")
@@ -324,10 +335,11 @@ class ImageLabeler:
         self.angle_var.set("")
         self.cropping_var.set("")
         self.reset_signature_boxes()
+        self.current_image_modified = False
 
     def has_labels_to_save(self):
-        """Check if any attributes have been set"""
-        return any(
+        """Check if any attributes have been set and the image has been modified"""
+        return self.current_image_modified and any(
             [
                 self.image_type_var.get() != "",
                 self.material_var.get() != "",
@@ -403,6 +415,7 @@ class ImageLabeler:
         }
         self.current_boxes.append(box)
         self.rect_id = None
+        self.current_image_modified = True
 
     def reset_signature_boxes(self):
         self.current_boxes = []
