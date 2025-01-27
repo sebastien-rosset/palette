@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import re
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
@@ -30,9 +31,13 @@ class CroppingQuality(Enum):
 
 
 class ImageLabeler:
-    def __init__(self, input_csv, output_csv):
+    def __init__(self, input_csv, output_csv, filename_regex):
         self.root = tk.Tk()
         self.root.title("Artwork Labeler")
+        self.filename_regex = filename_regex
+        if self.filename_regex:
+            self.filename_regex = re.compile(self.filename_regex)
+        logging.info(f"Filename regex: {self.filename_regex}")
         self.current_image_modified = False
         self.catalog_number_var = tk.StringVar()
         # Load input CSV data
@@ -301,11 +306,18 @@ class ImageLabeler:
         if 0 <= self.current_index < len(self.df):
             row = self.df.iloc[self.current_index]
             image_path = row["Path"]
+            filename = os.path.basename(image_path)
 
             # Check if image was already processed
             if image_path in self.processed_files:
                 self.next_image()
                 logging.info(f"Skipping image {image_path}")
+                return
+
+            # Check if filename matches regex pattern
+            if self.filename_regex and not self.filename_regex.search(filename):
+                logging.info(f"Skipping file {filename} - does not match regex pattern")
+                self.next_image()
                 return
 
             # Load and display image
@@ -494,7 +506,8 @@ class ImageLabeler:
 
             # Check if directory has any unprocessed images
             for idx in dir_groups[dir_path]:
-                if self.df.iloc[idx]["Path"] not in self.processed_files:
+                filepath = self.df.iloc[idx]["Path"]
+                if filepath not in self.processed_files:
                     return dir_path
 
         return None
@@ -555,6 +568,11 @@ def main():
         default="art_catalog_labels.csv",
         help="Output CSV file path (default: art_catalog_labels.csv)",
     )
+    parser.add_argument(
+        "--regex",
+        type=str,
+        help="Regex matching filename",
+    )
     parser.add_argument("-l", "--log", type=str, help="Log file path (optional)")
     parser.add_argument(
         "--log-level",
@@ -568,7 +586,7 @@ def main():
     log_level = getattr(logging, args.log_level)
     setup_logging(log_level=log_level, log_file=args.log)
 
-    labeler = ImageLabeler(args.csv, args.output)
+    labeler = ImageLabeler(args.csv, args.output, args.regex)
 
 
 if __name__ == "__main__":
