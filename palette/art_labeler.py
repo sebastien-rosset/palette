@@ -34,6 +34,7 @@ class ImageLabeler:
         self.root = tk.Tk()
         self.root.title("Artwork Labeler")
 
+        self.catalog_number_var = tk.StringVar()
         # Load input CSV data
         self.df = pd.read_csv(input_csv)
         self.current_index = 0
@@ -69,6 +70,10 @@ class ImageLabeler:
         self.controls = ttk.Frame(self.main_container)
         self.controls.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=10)
 
+        self.filename_var = tk.StringVar()
+        self.title_var = tk.StringVar()
+        self.dimensions_var = tk.StringVar()
+
         # Variables for signature box drawing
         self.start_x = None
         self.start_y = None
@@ -96,6 +101,36 @@ class ImageLabeler:
             writer.writeheader()
 
     def setup_controls(self):
+        # Image metadata display
+        metadata_frame = ttk.LabelFrame(
+            self.controls, text="Image Information", padding="5 5 5 5"
+        )
+        metadata_frame.pack(fill="x", padx=5, pady=5)
+
+        # Catalog Number
+        ttk.Label(metadata_frame, text="Catalog Number:").pack(anchor="w")
+        ttk.Label(
+            metadata_frame, textvariable=self.catalog_number_var, style="Info.TLabel"
+        ).pack(anchor="w", padx=10)
+
+        # Filename
+        ttk.Label(metadata_frame, text="Filename:").pack(anchor="w")
+        ttk.Label(
+            metadata_frame, textvariable=self.filename_var, style="Info.TLabel"
+        ).pack(anchor="w", padx=10)
+
+        # Title
+        ttk.Label(metadata_frame, text="Title:").pack(anchor="w")
+        ttk.Label(
+            metadata_frame, textvariable=self.title_var, style="Info.TLabel"
+        ).pack(anchor="w", padx=10)
+
+        # Dimensions
+        ttk.Label(metadata_frame, text="Dimensions:").pack(anchor="w")
+        ttk.Label(
+            metadata_frame, textvariable=self.dimensions_var, style="Info.TLabel"
+        ).pack(anchor="w", padx=10)
+
         # Create a frame for each group of controls
         image_type_frame = ttk.LabelFrame(
             self.controls, text="Image Type", padding="5 5 5 5"
@@ -216,7 +251,7 @@ class ImageLabeler:
         ttk.Button(nav_frame, text="← Previous", command=self.prev_image).pack(
             side="left", padx=5
         )
-        ttk.Button(nav_frame, text="NEXT →", command=self.next_image).pack(
+        ttk.Button(nav_frame, text="Next →", command=self.next_image).pack(
             side="right", padx=5
         )
 
@@ -229,6 +264,20 @@ class ImageLabeler:
         self.canvas.bind("<ButtonPress-1>", self.start_rect)
         self.canvas.bind("<B1-Motion>", self.draw_rect)
         self.canvas.bind("<ButtonRelease-1>", self.end_rect)
+
+        # Style for metadata labels
+        style = ttk.Style()
+        style.configure("Info.TLabel", font=("TkDefaultFont", 9, "bold"))
+
+    def update_metadata_display(self):
+        if 0 <= self.current_index < len(self.df):
+            row = self.df.iloc[self.current_index]
+
+            # Update metadata display - safely get values with fallback to empty string
+            self.catalog_number_var.set(str(row.get("catalog_number", "")))
+            self.filename_var.set(os.path.basename(row["Path"]))
+            self.title_var.set(str(row.get("title", "")))
+            self.dimensions_var.set(str(row.get("dimensions", "")))
 
     def update_progress_indicator(self):
         total = len(self.df)
@@ -258,6 +307,8 @@ class ImageLabeler:
                 # Store image dimensions for signature box calculations
                 self.image_width = image.width
                 self.image_height = image.height
+
+                self.update_metadata_display()
 
                 # Reset current labels
                 self.reset_labels()
