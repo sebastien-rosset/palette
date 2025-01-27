@@ -86,7 +86,7 @@ class ArtClassifier(nn.Module):
         return {task: head(features) for task, head in self.heads.items()}
 
 
-def train_model(train_loader, val_loader, model, device, num_epochs=10):
+def train_model(train_loader, val_loader, model, device, num_epochs=15):
     criterion = nn.CrossEntropyLoss(ignore_index=-1)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
