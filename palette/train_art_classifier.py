@@ -141,7 +141,6 @@ def main():
     parser.add_argument(
         "--labels",
         type=str,
-        required=True,
         default="art_catalog_labels.csv",
         help="Path to labeled data CSV file",
     )

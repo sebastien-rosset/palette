@@ -9,6 +9,7 @@ readme = "README.md"
 python = "^3.12"
 imagehash = "^4.3.1"
 pandas = "^2.2.3"
+scikit-learn = "^1.6.1"
 
 
 [tool.poetry.group.dev.dependencies]

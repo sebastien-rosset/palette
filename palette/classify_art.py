@@ -67,7 +67,6 @@ def main():
     parser.add_argument(
         "--input-csv",
         type=str,
-        required=True,
         default="art_catalog.csv",
         help="Path to input CSV file with image paths",
     )
