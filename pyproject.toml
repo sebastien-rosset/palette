@@ -6,13 +6,19 @@ authors = ["Sebastien Rosset"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "^3.12"
 imagehash = "^4.3.1"
 pandas = "^2.2.3"
 
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
+
+
+[[tool.poetry.source]]
+name = "pytorch_cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]
