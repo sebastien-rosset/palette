@@ -577,7 +577,9 @@ class ArtCatalog:
 def main():
     # Set up command-line argument parsing
     parser = argparse.ArgumentParser(description="Catalog art images in a directory")
-    parser.add_argument("--path", type=str, help="Directory containing art images")
+    parser.add_argument(
+        "--path", type=str, required=True, help="Directory containing art images"
+    )
     parser.add_argument(
         "-o",
         "--output",

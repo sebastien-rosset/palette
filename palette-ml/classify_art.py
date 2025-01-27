@@ -71,9 +71,10 @@ def main():
         help="Path to input CSV file with image paths",
     )
     parser.add_argument(
-        "--model", type=str,
+        "--model",
+        type=str,
         default="art_classifier_model.pth",
-        help="Path to trained model file"
+        help="Path to trained model file",
     )
     parser.add_argument(
         "--output",
