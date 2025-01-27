@@ -17,6 +17,40 @@ import ast
 import torchvision.ops as ops
 
 
+def custom_collate(batch):
+    images = torch.stack([item[0] for item in batch])
+
+    # Handle labels dictionary
+    labels = {}
+    for key in batch[0][1].keys():
+        if key == "signature_boxes":
+            # For signature boxes, we'll pad to max number of boxes in the batch
+            max_boxes = max(item[1]["signature_boxes"].size(0) for item in batch)
+            if max_boxes == 0:
+                # If no boxes in batch, create empty tensor
+                labels["signature_boxes"] = torch.zeros(
+                    (len(batch), 0, 4), dtype=torch.float32
+                )
+            else:
+                # Pad all tensors to max_boxes
+                padded_boxes = []
+                for item in batch:
+                    boxes = item[1]["signature_boxes"]
+                    if boxes.size(0) < max_boxes:
+                        # Pad with zeros
+                        padding = torch.zeros(
+                            (max_boxes - boxes.size(0), 4), dtype=torch.float32
+                        )
+                        boxes = torch.cat([boxes, padding], dim=0)
+                    padded_boxes.append(boxes)
+                labels["signature_boxes"] = torch.stack(padded_boxes)
+        else:
+            # For other labels, just stack them
+            labels[key] = torch.tensor([item[1][key] for item in batch])
+
+    return images, labels
+
+
 class ArtDataset(Dataset):
     def __init__(self, df, transform=None):
         self.df = df
@@ -67,15 +101,12 @@ class ArtDataset(Dataset):
                     # Scale boxes to normalized coordinates (0-1)
                     scaled_boxes = []
                     for box in boxes:
-                        x1, y1, x2, y2 = box
-                        scaled_boxes.append(
-                            [
-                                x1 / original_size[0],
-                                y1 / original_size[1],
-                                x2 / original_size[0],
-                                y2 / original_size[1],
-                            ]
-                        )
+                        # Handle dictionary format of boxes
+                        x1 = float(box["x1"])
+                        y1 = float(box["y1"])
+                        x2 = float(box["x2"])
+                        y2 = float(box["y2"])
+                        scaled_boxes.append([x1, y1, x2, y2])  # Already normalized
                     labels["signature_boxes"] = torch.tensor(
                         scaled_boxes, dtype=torch.float32
                     )
@@ -83,7 +114,8 @@ class ArtDataset(Dataset):
                 else:
                     labels["signature_boxes"] = torch.zeros((0, 4), dtype=torch.float32)
                     labels["num_signatures"] = 0
-            except (ValueError, SyntaxError):
+            except (ValueError, SyntaxError, KeyError) as e:
+                print(f"Error parsing signature boxes for {image_path}: {e}")
                 labels["signature_boxes"] = torch.zeros((0, 4), dtype=torch.float32)
                 labels["num_signatures"] = 0
         else:
@@ -137,11 +169,23 @@ class ArtClassifier(nn.Module):
 
 def compute_box_loss(pred_boxes, true_boxes):
     """Compute loss for bounding box prediction"""
-    if len(true_boxes) == 0:
+    if true_boxes.size(1) == 0:  # No boxes in batch
         return torch.tensor(0.0).to(pred_boxes.device)
 
-    # Use GIoU loss for better bounding box regression
-    loss = ops.generalized_box_iou_loss(pred_boxes, true_boxes, reduction="mean")
+    # Compute loss only for valid boxes (non-zero)
+    valid_mask = (true_boxes.sum(dim=-1) != 0).float()  # [batch_size, max_boxes]
+
+    # Reshape predictions to match true boxes shape
+    pred_boxes = pred_boxes.unsqueeze(1).expand(-1, true_boxes.size(1), -1)
+
+    # Compute GIoU loss
+    loss = ops.generalized_box_iou_loss(
+        pred_boxes.view(-1, 4), true_boxes.view(-1, 4), reduction="none"
+    )
+
+    # Apply valid mask and average
+    loss = (loss.view(valid_mask.shape) * valid_mask).sum() / (valid_mask.sum() + 1e-6)
+
     return loss
 
 
@@ -259,8 +303,15 @@ def main():
     val_dataset = ArtDataset(val_df, transform=transform)
 
     # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        collate_fn=custom_collate,
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=args.batch_size, collate_fn=custom_collate
+    )
 
     # Set up model
     num_classes_dict = {"image_type": 2, "has_signature": 2, "angle": 2, "cropping": 2}
