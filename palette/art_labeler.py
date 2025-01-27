@@ -288,6 +288,9 @@ class ImageLabeler:
             self.filename_var.set(os.path.basename(row["Path"]))
             self.title_var.set(str(row.get("title", "")))
             self.dimensions_var.set(str(row.get("dimensions", "")))
+            logging.info(f"Catalog number: {self.catalog_number_var.get()}")
+        else:
+            logging.info("All images processed")
 
     def update_progress_indicator(self):
         total = len(self.df)
@@ -302,10 +305,12 @@ class ImageLabeler:
             # Check if image was already processed
             if image_path in self.processed_files:
                 self.next_image()
+                logging.info(f"Skipping image {image_path}")
                 return
 
             # Load and display image
             try:
+                logging.info(f"Loading image {image_path}")
                 image = Image.open(image_path)
                 # Resize image to fit canvas while maintaining aspect ratio
                 display_size = (800, 600)
@@ -327,6 +332,8 @@ class ImageLabeler:
             except Exception as e:
                 logging.error(f"Error loading image {image_path}: {e}")
                 self.next_image()
+        else:
+            logging.info("All images processed")
 
     def reset_labels(self):
         self.image_type_var.set("")
@@ -432,12 +439,15 @@ class ImageLabeler:
             return
 
         # Try to save current labels if they exist
-        self.save_current_labels()
+        if self.current_image_modified:
+            self.save_current_labels()
 
         current_dir = os.path.dirname(self.df.iloc[self.current_index]["Path"])
 
         # First try to find next unprocessed image in current directory
         next_idx = self.find_next_unprocessed_in_directory(current_dir)
+
+        logging.info(f"Processing image {self.current_index+1}/{len(self.df)}. Current directory: {current_dir}. Next idx: {next_idx}")
 
         if next_idx is None:
             # If no more unprocessed images in current directory, find next directory
