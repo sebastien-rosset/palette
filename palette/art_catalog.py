@@ -147,7 +147,7 @@ MATERIAL_INDICATORS = {
 
 
 class ArtCatalog:
-    def __init__(self, base_path: str, output_file="art_catalog_report.csv"):
+    def __init__(self, base_path: str, output_file="art_catalog.csv"):
         self.base_path = base_path
         self.output_file = output_file
         self.catalog: Dict[str, Dict] = {}
@@ -380,9 +380,9 @@ class ArtCatalog:
             info["title"] = filename
 
         log_parts = [f"Title: {info['title']}"]
-        if info['material']:
+        if info["material"]:
             log_parts.append(f"Material: {info['material']}")
-        if info['width'] and info['height']:  # Only add dimensions if both are set
+        if info["width"] and info["height"]:  # Only add dimensions if both are set
             log_parts.append(f"Dimensions: {info['width']}X{info['height']}")
         log_parts.append(f"Filename: {filename}")
         logging.info(". ".join(log_parts))
@@ -582,8 +582,8 @@ def main():
         "-o",
         "--output",
         type=str,
-        default="art_catalog_report.csv",
-        help="Output CSV file path (default: art_catalog_report.csv)",
+        default="art_catalog.csv",
+        help="Output CSV file path (default: art_catalog.csv)",
     )
     parser.add_argument("-l", "--log", type=str, help="Log file path (optional)")
     parser.add_argument(
